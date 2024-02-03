@@ -1,7 +1,13 @@
-use std::marker::PhantomData;
+mod impls;
 
-/// A container for data.
-pub trait Container: Default {
+pub use impls::mirror::MirrorRegion;
+pub use impls::result::ResultRegion;
+pub use impls::slice::SliceRegion;
+pub use impls::slice_copy::CopyRegion;
+pub use impls::string::StringRegion;
+
+/// A region to store data.
+pub trait Region: Default {
     /// The type of the data that one gets out of the container.
     type ReadItem<'a>
     where
@@ -15,349 +21,112 @@ pub trait Container: Default {
     /// pushing data into the container.
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
 
-    /// The length of the container. 0 if unspecified.
-    fn len(&self) -> usize;
+    // Ensure that the region can absorb the items of `regions` without reallocation
+    fn reserve_regions<'a, I>(&mut self, regions: I)
+    where
+        Self: 'a,
+        I: Iterator<Item = &'a Self> + Clone;
 
-    /// Test whether the container is empty. True if length is not specified.
-    ///
-    /// Must return `true` if and only if [`Self::len`] returns 0.
-    fn is_empty(&self) -> bool;
+    fn clear(&mut self);
 }
 
 /// A trait to let types express a default container type.
 pub trait Containerized {
     /// The recommended container type.
-    type Container: Container;
+    type Region: Region;
 }
 
 /// Push a type into a container.
-pub trait CopyOnto<C: Container> {
+pub trait CopyOnto<C: Region> {
     /// Copy self into the target container, returning an index that allows to
     /// look up the corresponding read item.
     fn copy_onto(self, target: &mut C) -> C::Index;
+
+    /// Ensure that the region can absorb `items` without reallocation.
+    fn reserve_items<I>(target: &mut C, items: I)
+    where
+        I: Iterator<Item = Self> + Clone;
 }
 
-/// A container for [`Copy`] types.
-#[derive(Debug)]
-pub struct CopyContainer<T: Copy> {
-    offsets: Vec<usize>,
-    slices: Vec<T>,
-}
-
-impl<T: Copy> Container for CopyContainer<T> {
-    type ReadItem<'a> = &'a [T] where Self: 'a;
-    type Index = usize;
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        &self.slices[self.offsets[index]..self.offsets[index + 1]]
-    }
-
-    fn len(&self) -> usize {
-        self.offsets.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.offsets.is_empty()
-    }
-}
-
-impl<T: Copy> Default for CopyContainer<T> {
-    fn default() -> Self {
-        Self {
-            offsets: vec![0],
-            slices: Vec::default(),
-        }
-    }
-}
-
-impl<'a, T> CopyOnto<CopyContainer<T>> for &'a [T]
-where
-    T: Copy,
-{
-    fn copy_onto(self, target: &mut CopyContainer<T>) -> usize {
-        target.slices.extend(self);
-        target.offsets.push(target.slices.len());
-        target.offsets.len() - 2
-    }
-}
-
-/// A container representing slices of data.
-#[derive(Debug)]
-pub struct SliceContainer<C: Container> {
-    offsets: Vec<usize>,
-    slices: Vec<C::Index>,
-    inner: C,
-}
-
-impl<C: Container> Container for SliceContainer<C> {
-    type ReadItem<'a> = (&'a C, &'a [C::Index]) where Self: 'a;
-    type Index = usize;
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        let slice = &self.slices[self.offsets[index]..self.offsets[index + 1]];
-        (&self.inner, slice)
-    }
-
-    fn len(&self) -> usize {
-        self.offsets.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.offsets.is_empty()
-    }
-}
-
-impl<C: Container> Default for SliceContainer<C> {
-    fn default() -> Self {
-        Self {
-            offsets: vec![0],
-            slices: Vec::default(),
-            inner: C::default(),
-        }
-    }
-}
-
-impl<'a, C, T> CopyOnto<SliceContainer<C>> for &'a [T]
-where
-    C: Container,
-    &'a T: CopyOnto<C>,
-{
-    fn copy_onto(self, target: &mut SliceContainer<C>) -> usize {
-        target
-            .slices
-            .extend(self.iter().map(|t| t.copy_onto(&mut target.inner)));
-        target.offsets.push(target.slices.len());
-        target.offsets.len() - 2
-    }
-}
-
-impl<'a, C, T> CopyOnto<SliceContainer<C>> for &'a Vec<T>
-where
-    C: Container,
-    &'a [T]: CopyOnto<SliceContainer<C>>,
-{
-    fn copy_onto(self, target: &mut SliceContainer<C>) -> usize {
-        self.as_slice().copy_onto(target)
-    }
-}
-
-impl<'a, C: Container> CopyOnto<SliceContainer<C>> for &'a (&'a C, &'a [C::Index])
-where
-    C::ReadItem<'a>: CopyOnto<C>,
-{
-    fn copy_onto(self, target: &mut SliceContainer<C>) -> <SliceContainer<C> as Container>::Index {
-        let (container, indexes) = self;
-        target.slices.extend(
-            indexes
-                .iter()
-                .map(|&index| container.index(index).copy_onto(&mut target.inner)),
-        );
-        target.offsets.push(target.slices.len());
-        target.offsets.len() - 2
-    }
+pub trait ReserveItems<R: Region> {
+    /// Ensure that the region can absorb `items` without reallocation.
+    fn reserve_items<I>(target: &mut R, items: I)
+    where
+        I: Iterator<Item = Self> + Clone;
 }
 
 impl<T: Containerized> Containerized for Vec<T> {
-    type Container = SliceContainer<T::Container>;
+    type Region = SliceRegion<T::Region>;
 }
 
 impl<T: Containerized> Containerized for [T] {
-    type Container = SliceContainer<T::Container>;
+    type Region = SliceRegion<T::Region>;
 }
 
-/// A container to store strings and read `&str`.
-#[derive(Default, Debug)]
-pub struct StringContainer {
-    inner: SliceContainer<MirrorContainer<u8>>,
+pub struct FlatStack<R: Region> {
+    indices: Vec<R::Index>,
+    region: R,
 }
 
-impl Container for StringContainer {
-    type ReadItem<'a>= &'a str where Self: 'a ;
-    type Index = usize;
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        unsafe { std::str::from_utf8_unchecked(self.inner.index(index).1) }
-    }
-
-    fn len(&self) -> usize {
-        self.inner.len()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+impl<R: Region> FlatStack<R> {
+    #[inline]
+    pub fn default_impl<T: Containerized<Region = R>>() -> Self {
+        Self::default()
     }
 }
 
-impl Containerized for String {
-    type Container = StringContainer;
-}
-
-impl<'a> CopyOnto<StringContainer> for &'a String {
-    fn copy_onto(self, target: &mut StringContainer) -> usize {
-        self.as_str().copy_onto(target)
-    }
-}
-
-impl<'a> CopyOnto<StringContainer> for &'a str {
-    fn copy_onto(self, target: &mut StringContainer) -> usize {
-        self.as_bytes().copy_onto(&mut target.inner)
-    }
-}
-
-/// A container for types where the read item type is equal to the index type.
-#[derive(Debug)]
-pub struct MirrorContainer<T>(PhantomData<*const T>);
-
-impl<T: Copy> Container for MirrorContainer<T> {
-    type ReadItem<'a> = T where T: 'a;
-    type Index = T;
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index
-    }
-
-    fn len(&self) -> usize {
-        0
-    }
-
-    fn is_empty(&self) -> bool {
-        true
-    }
-}
-
-impl<T> Default for MirrorContainer<T> {
+impl<R: Region> Default for FlatStack<R> {
+    #[inline]
     fn default() -> Self {
-        Self(PhantomData)
+        Self {
+            indices: Vec::default(),
+            region: R::default(),
+        }
     }
 }
 
-mod implementations {
-    use super::*;
-
-    macro_rules! implement_for {
-        ($index_type:ty) => {
-            impl Containerized for $index_type {
-                type Container = MirrorContainer<Self>;
-            }
-
-            impl CopyOnto<MirrorContainer<Self>> for $index_type {
-                fn copy_onto(self, _target: &mut MirrorContainer<Self>) -> $index_type {
-                    self
-                }
-            }
-
-            impl<'a> CopyOnto<MirrorContainer<$index_type>> for &'a $index_type {
-                fn copy_onto(self, _target: &mut MirrorContainer<$index_type>) -> $index_type {
-                    *self
-                }
-            }
-        };
+impl<R: Region> FlatStack<R> {
+    #[inline]
+    pub fn copy(&mut self, item: impl CopyOnto<R>) {
+        let index = item.copy_onto(&mut self.region);
+        self.indices.push(index);
     }
 
-    implement_for!(());
-    implement_for!(bool);
-    implement_for!(char);
-
-    implement_for!(u8);
-    implement_for!(u16);
-    implement_for!(u32);
-    implement_for!(u64);
-    implement_for!(u128);
-    implement_for!(usize);
-
-    implement_for!(i8);
-    implement_for!(i16);
-    implement_for!(i32);
-    implement_for!(i64);
-    implement_for!(i128);
-    implement_for!(isize);
-
-    implement_for!(f32);
-    implement_for!(f64);
-
-    implement_for!(std::num::Wrapping<i8>);
-    implement_for!(std::num::Wrapping<i16>);
-    implement_for!(std::num::Wrapping<i32>);
-    implement_for!(std::num::Wrapping<i64>);
-    implement_for!(std::num::Wrapping<i128>);
-    implement_for!(std::num::Wrapping<isize>);
-
-    implement_for!(std::time::Duration);
-}
-
-pub use result::ResultContainer;
-
-mod result {
-    use super::*;
-
-    #[derive(Default)]
-    pub struct ResultContainer<T, E> {
-        oks: T,
-        errs: E,
+    #[inline]
+    pub fn get(&self, offset: usize) -> R::ReadItem<'_> {
+        self.region.index(self.indices[offset])
     }
 
-    impl<T, E> Container for ResultContainer<T, E>
-    where
-        T: Container,
-        E: Container,
+    /// The length of the container. 0 if unspecified.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    /// Test whether the container is empty. True if length is not specified.
+    ///
+    /// Must return `true` if and only if [`Self::len`] returns 0.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+
+    /// Remove all elements while possibly retaining allocations.
+    pub fn clear(&mut self) {
+        self.indices.clear();
+        self.region.clear();
+    }
+
+    pub fn reserve_items<T>(&mut self, items: impl Iterator<Item=T> + Clone)
+        where T: ReserveItems<R>,
     {
-        type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
-        type Index = Result<T::Index, E::Index>;
-
-        fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-            match index {
-                Ok(index) => Ok(self.oks.index(index)),
-                Err(index) => Err(self.errs.index(index)),
-            }
-        }
-
-        fn len(&self) -> usize {
-            self.oks.len() + self.errs.len()
-        }
-
-        fn is_empty(&self) -> bool {
-            self.oks.is_empty() && self.errs.is_empty()
-        }
+        ReserveItems::reserve_items(&mut self.region, items);
     }
 
-    impl<T, TC, E, EC> CopyOnto<ResultContainer<TC, EC>> for Result<T, E>
-    where
-        TC: Container,
-        EC: Container,
-        T: CopyOnto<TC>,
-        E: CopyOnto<EC>,
+    pub fn reserve_regions<'a>(&mut self, regions: impl Iterator<Item=&'a R> + Clone)
+    where R: 'a
     {
-        fn copy_onto(
-            self,
-            target: &mut ResultContainer<TC, EC>,
-        ) -> <ResultContainer<TC, EC> as Container>::Index {
-            match self {
-                Ok(t) => Ok(t.copy_onto(&mut target.oks)),
-                Err(e) => Err(e.copy_onto(&mut target.errs)),
-            }
-        }
-    }
-
-    impl<'a, T, TC, E, EC> CopyOnto<ResultContainer<TC, EC>> for &'a Result<T, E>
-    where
-        TC: Container,
-        EC: Container,
-        &'a T: CopyOnto<TC>,
-        &'a E: CopyOnto<EC>,
-    {
-        fn copy_onto(
-            self,
-            target: &mut ResultContainer<TC, EC>,
-        ) -> <ResultContainer<TC, EC> as Container>::Index {
-            match self {
-                Ok(t) => Ok(t.copy_onto(&mut target.oks)),
-                Err(e) => Err(e.copy_onto(&mut target.errs)),
-            }
-        }
-    }
-
-    impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
-        type Container = ResultContainer<T::Container, E::Container>;
+        self.region.reserve_regions(regions)
     }
 }
 
@@ -367,7 +136,7 @@ mod tests {
 
     #[test]
     fn test_slice_string_onto() {
-        let mut c = StringContainer::default();
+        let mut c = StringRegion::default();
         let index = "abc".to_string().copy_onto(&mut c);
         assert_eq!("abc", c.index(index));
         let index = "def".copy_onto(&mut c);
@@ -375,8 +144,17 @@ mod tests {
     }
 
     #[test]
+    fn test_container_string() {
+        let mut c = FlatStack::default_impl::<String>();
+        c.copy(&"abc".to_string());
+        assert_eq!("abc", c.get(0));
+        c.copy("def");
+        assert_eq!("def", c.get(1));
+    }
+
+    #[test]
     fn test_vec() {
-        let mut c = SliceContainer::default();
+        let mut c = SliceRegion::default();
         let slice = &[1u8, 2, 3];
         let idx = slice.copy_onto(&mut c);
         assert_eq!(slice, c.index(idx).1)
@@ -384,7 +162,7 @@ mod tests {
 
     #[test]
     fn test_vec_onto() {
-        let mut c: SliceContainer<MirrorContainer<u8>> = SliceContainer::default();
+        let mut c: SliceRegion<MirrorRegion<u8>> = SliceRegion::default();
         let slice = &[1u8, 2, 3][..];
         let idx = slice.copy_onto(&mut c);
         assert_eq!(slice, c.index(idx).1)
@@ -397,34 +175,32 @@ mod tests {
     }
 
     impl Containerized for Person {
-        type Container = PersonContainer;
+        type Region = PersonRegion;
     }
 
     #[derive(Default)]
-    struct PersonContainer {
-        index: Vec<(
-            <<String as Containerized>::Container as Container>::Index,
-            <<u16 as Containerized>::Container as Container>::Index,
-            <<Vec<String> as Containerized>::Container as Container>::Index,
-        )>,
-        name_container: <String as Containerized>::Container,
-        age_container: <u16 as Containerized>::Container,
-        hobbies: <Vec<String> as Containerized>::Container,
+    struct PersonRegion {
+        name_container: <String as Containerized>::Region,
+        age_container: <u16 as Containerized>::Region,
+        hobbies: <Vec<String> as Containerized>::Region,
     }
 
     #[derive(Debug)]
     struct PersonRef<'a> {
-        name: <<String as Containerized>::Container as Container>::ReadItem<'a>,
-        age: <<u16 as Containerized>::Container as Container>::ReadItem<'a>,
-        hobbies: <<Vec<String> as Containerized>::Container as Container>::ReadItem<'a>,
+        name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
+        age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
+        hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
     }
 
-    impl Container for PersonContainer {
+    impl Region for PersonRegion {
         type ReadItem<'a> = PersonRef<'a> where Self: 'a;
-        type Index = usize;
+        type Index = (
+            <<String as Containerized>::Region as Region>::Index,
+            <<u16 as Containerized>::Region as Region>::Index,
+            <<Vec<String> as Containerized>::Region as Region>::Index,
+        );
 
-        fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-            let (name, age, hobbies) = self.index[index];
+        fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
             PersonRef {
                 name: self.name_container.index(name),
                 age: self.age_container.index(age),
@@ -432,32 +208,66 @@ mod tests {
             }
         }
 
-        fn len(&self) -> usize {
-            self.index.len()
+        fn reserve_regions<'a, I>(&mut self, regions: I)
+        where
+            Self: 'a,
+            I: Iterator<Item = &'a Self> + Clone,
+        {
+            self.name_container
+                .reserve_regions(regions.clone().map(|r| &r.name_container));
+            self.age_container
+                .reserve_regions(regions.clone().map(|r| &r.age_container));
+            self.hobbies
+                .reserve_regions(regions.clone().map(|r| &r.hobbies));
         }
 
-        fn is_empty(&self) -> bool {
-            self.index.is_empty()
+        fn clear(&mut self) {
+            self.name_container.clear();
+            self.age_container.clear();
+            self.hobbies.clear();
         }
     }
 
-    impl CopyOnto<PersonContainer> for Person {
-        fn copy_onto(self, target: &mut PersonContainer) -> usize {
+    impl<'a> CopyOnto<PersonRegion> for &'a Person {
+        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = self.name.copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
-            let hobbies = self.hobbies.copy_onto(&mut target.hobbies);
-            target.index.push((name, age, hobbies));
-            target.index.len() - 1
+            let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
+            (name, age, hobbies)
+        }
+
+        fn reserve_items<I>(_target: &mut PersonRegion, _items: I)
+        where
+            I: Iterator<Item = Self> + Clone,
+        {
+            todo!()
         }
     }
 
-    impl<'a> CopyOnto<PersonContainer> for PersonRef<'a> {
-        fn copy_onto(self, target: &mut PersonContainer) -> usize {
+    impl<'a> ReserveItems<PersonRegion> for &'a Person {
+        fn reserve_items<I>(target: &mut PersonRegion, items: I)
+        where
+            I: Iterator<Item = Self> + Clone,
+        {
+            ReserveItems::reserve_items(&mut target.name_container, items.clone().map(|i| &i.name));
+            ReserveItems::reserve_items(&mut target.age_container, items.clone().map(|i| &i.age));
+            ReserveItems::reserve_items(&mut target.hobbies, items.map(|i| &i.hobbies));
+        }
+    }
+
+    impl<'a> CopyOnto<PersonRegion> for PersonRef<'a> {
+        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = self.name.copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = self.hobbies.copy_onto(&mut target.hobbies);
-            target.index.push((name, age, hobbies));
-            target.index.len() - 1
+            (name, age, hobbies)
+        }
+
+        fn reserve_items<I>(_target: &mut PersonRegion, _items: I)
+        where
+            I: Iterator<Item = Self> + Clone,
+        {
+            todo!()
         }
     }
 
@@ -470,9 +280,9 @@ mod tests {
             hobbies: hobbies.iter().map(ToString::to_string).collect(),
         };
 
-        let mut c = <Person as Containerized>::Container::default();
-        let idx = p.copy_onto(&mut c);
-        let person_ref = c.index(idx);
+        let mut c = FlatStack::default_impl::<Person>();
+        c.copy(&p);
+        let person_ref = c.get(0);
         assert_eq!("Moritz", person_ref.name);
         assert_eq!(123, person_ref.age);
         assert_eq!(2, person_ref.hobbies.1.len());
@@ -480,11 +290,11 @@ mod tests {
             assert_eq!(hobby, person_ref.hobbies.0.index(*idx));
         }
 
-        let mut cc = PersonContainer::default();
+        let mut cc = FlatStack::default_impl::<Person>();
 
-        let idx = c.index(idx).copy_onto(&mut cc);
+        cc.copy(c.get(0));
 
-        let person_ref = cc.index(idx);
+        let person_ref = cc.get(0);
         assert_eq!("Moritz", person_ref.name);
         assert_eq!(123, person_ref.age);
         assert_eq!(2, person_ref.hobbies.1.len());
@@ -496,8 +306,88 @@ mod tests {
     #[test]
     fn test_result() {
         let r: Result<_, u16> = Ok("abc");
-        let mut c = ResultContainer::default();
+        let mut c = ResultRegion::default();
         let idx = r.copy_onto(&mut c);
         assert_eq!(r, c.index(idx));
+    }
+
+    #[test]
+    fn all_types() {
+        fn test_copy<T, C: Region>(t: T)
+        where
+            T: CopyOnto<C>,
+        {
+            let mut c = FlatStack::default();
+            c.copy(t);
+        }
+
+        test_copy::<_, StringRegion>(&"a".to_string());
+        test_copy::<_, StringRegion>("a");
+
+        test_copy::<_, MirrorRegion<_>>(());
+        test_copy::<_, MirrorRegion<_>>(&());
+        test_copy::<_, MirrorRegion<_>>(true);
+        test_copy::<_, MirrorRegion<_>>(&true);
+        test_copy::<_, MirrorRegion<_>>(' ');
+        test_copy::<_, MirrorRegion<_>>(&' ');
+        test_copy::<_, MirrorRegion<_>>(0u8);
+        test_copy::<_, MirrorRegion<_>>(&0u8);
+        test_copy::<_, MirrorRegion<_>>(0u16);
+        test_copy::<_, MirrorRegion<_>>(&0u16);
+        test_copy::<_, MirrorRegion<_>>(0u32);
+        test_copy::<_, MirrorRegion<_>>(&0u32);
+        test_copy::<_, MirrorRegion<_>>(0u64);
+        test_copy::<_, MirrorRegion<_>>(&0u64);
+        test_copy::<_, MirrorRegion<_>>(0u128);
+        test_copy::<_, MirrorRegion<_>>(&0u128);
+        test_copy::<_, MirrorRegion<_>>(0usize);
+        test_copy::<_, MirrorRegion<_>>(&0usize);
+        test_copy::<_, MirrorRegion<_>>(0i8);
+        test_copy::<_, MirrorRegion<_>>(&0i8);
+        test_copy::<_, MirrorRegion<_>>(0i16);
+        test_copy::<_, MirrorRegion<_>>(&0i16);
+        test_copy::<_, MirrorRegion<_>>(0i32);
+        test_copy::<_, MirrorRegion<_>>(&0i32);
+        test_copy::<_, MirrorRegion<_>>(0i64);
+        test_copy::<_, MirrorRegion<_>>(&0i64);
+        test_copy::<_, MirrorRegion<_>>(0i128);
+        test_copy::<_, MirrorRegion<_>>(&0i128);
+        test_copy::<_, MirrorRegion<_>>(0isize);
+        test_copy::<_, MirrorRegion<_>>(&0isize);
+        test_copy::<_, MirrorRegion<_>>(0f32);
+        test_copy::<_, MirrorRegion<_>>(&0f32);
+        test_copy::<_, MirrorRegion<_>>(0f64);
+        test_copy::<_, MirrorRegion<_>>(&0f64);
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i8));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i8));
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i16));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i16));
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i32));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i32));
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i64));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i64));
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i128));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i128));
+        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0isize));
+        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0isize));
+
+        test_copy::<_, ResultRegion<_, _>>(Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<_, _>>(&Result::<u8, u8>::Ok(0));
+
+        test_copy::<_, SliceRegion<_>>([0u8].as_slice());
+        test_copy::<_, SliceRegion<_>>(vec![0u8]);
+        test_copy::<_, SliceRegion<_>>(&vec![0u8]);
+
+        test_copy::<_, SliceRegion<_>>(["a"].as_slice());
+        test_copy::<_, SliceRegion<_>>(vec!["a"]);
+        test_copy::<_, SliceRegion<_>>(&vec!["a"]);
+
+        test_copy::<_, SliceRegion<_>>([("a",)].as_slice());
+        test_copy::<_, SliceRegion<_>>(vec![("a",)]);
+        test_copy::<_, SliceRegion<_>>(&vec![("a",)]);
+
+        test_copy::<_, CopyRegion<_>>([0u8].as_slice());
+
+        test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
     }
 }

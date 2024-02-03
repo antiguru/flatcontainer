@@ -9,3 +9,9 @@ repository = "https://github.com/antiguru/flatcontainer"
 rust-version = "1.70"
 
 [dependencies]
+paste = "1.0.14"
+
+[profile.bench]
+debug = 2
+codegen-units = 1
+lto = true
