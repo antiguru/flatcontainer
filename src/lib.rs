@@ -22,7 +22,7 @@ impl<T: Copy> Index for T {}
 /// A region to store data.
 pub trait Region: Default {
     /// The type of the data that one gets out of the container.
-    type ReadItem<'a>
+    type ReadItem<'a>: CopyOnto<Self>
     where
         Self: 'a;
 
@@ -336,12 +336,15 @@ mod tests {
 
     #[test]
     fn all_types() {
-        fn test_copy<T, C: Region>(t: T)
+        fn test_copy<T, C: Region + Clone>(t: T)
         where
             T: CopyOnto<C>,
         {
             let mut c = FlatStack::default();
             c.copy(t);
+
+            let mut cc = c.clone();
+            cc.copy(c.get(0));
         }
 
         test_copy::<_, StringRegion>(&"a".to_string());
@@ -412,5 +415,18 @@ mod tests {
         test_copy::<_, CopyRegion<_>>([0u8].as_slice());
 
         test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
+    }
+
+    #[test]
+    fn slice_region_read_item() {
+        let mut c = FlatStack::<SliceRegion<MirrorRegion<u8>>>::default();
+        c.copy(vec![1, 2, 3]);
+
+        let mut r = SliceRegion::<MirrorRegion<u8>>::default();
+        let idx = [1, 2, 3].copy_onto(&mut r);
+        let read_item = r.index(idx);
+        let _read_item2 = read_item.clone();
+        let _read_item3 = read_item;
+        assert_eq!(vec![1, 2, 3], read_item.into_iter().collect::<Vec<_>>());
     }
 }

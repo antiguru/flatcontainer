@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::CopyRegion;
-use crate::{Containerized, CopyOnto, Region, ReserveItems, SliceRegion};
+use crate::{Containerized, CopyOnto, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 #[derive(Default, Debug, Clone)]
@@ -13,7 +13,7 @@ pub struct StringRegion {
 
 impl Region for StringRegion {
     type ReadItem<'a> = &'a str where Self: 'a ;
-    type Index = <SliceRegion<CopyRegion<u8>> as Region>::Index;
+    type Index = <CopyRegion<u8> as Region>::Index;
 
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
