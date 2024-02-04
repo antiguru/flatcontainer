@@ -1,7 +1,11 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::{CopyOnto, Region, ReserveItems};
 
 /// A container for [`Copy`] types.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CopyRegion<T: Copy> {
     slices: Vec<T>,
 }
