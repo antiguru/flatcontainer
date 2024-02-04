@@ -43,13 +43,6 @@ impl CopyOnto<StringRegion> for &String {
     fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
         self.as_str().copy_onto(target)
     }
-
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        CopyOnto::reserve_items(target, items.map(String::as_str));
-    }
 }
 
 impl ReserveItems<StringRegion> for &String {
@@ -66,26 +59,12 @@ impl CopyOnto<StringRegion> for &str {
     fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
     }
-
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        CopyOnto::reserve_items(&mut target.inner, items.map(str::as_bytes))
-    }
 }
 
 impl CopyOnto<StringRegion> for &&str {
     #[inline]
     fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
-    }
-
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        CopyOnto::reserve_items(&mut target.inner, items.map(|s| s.as_bytes()))
     }
 }
 

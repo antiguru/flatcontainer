@@ -63,11 +63,6 @@ macro_rules! tuple_flatcontainer {
                     let ($($name,)*) = self;
                     ($($name.copy_onto(&mut target.[<container $name>]),)*)
                 }
-
-                fn reserve_items<It>(_target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>, _items: It)
-                where
-                    It: Iterator<Item = Self> + Clone {
-                }
             }
 
             #[allow(non_camel_case_types)]
@@ -83,10 +78,6 @@ macro_rules! tuple_flatcontainer {
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = self;
                     ($($name.copy_onto(&mut target.[<container $name>]),)*)
-                }
-                fn reserve_items<It>(_target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>, _items: It)
-                where
-                    It: Iterator<Item = Self> + Clone {
                 }
             }
 

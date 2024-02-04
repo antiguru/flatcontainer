@@ -51,26 +51,12 @@ macro_rules! implement_for {
             fn copy_onto(self, _target: &mut MirrorRegion<Self>) -> $index_type {
                 self
             }
-
-            #[inline(always)]
-            fn reserve_items<I>(_target: &mut MirrorRegion<Self>, _items: I)
-            where
-                I: Iterator<Item = Self> + Clone,
-            {
-            }
         }
 
         impl<'a> CopyOnto<MirrorRegion<$index_type>> for &'a $index_type {
             #[inline(always)]
             fn copy_onto(self, _target: &mut MirrorRegion<$index_type>) -> $index_type {
                 *self
-            }
-
-            #[inline(always)]
-            fn reserve_items<I>(_target: &mut MirrorRegion<$index_type>, _items: I)
-            where
-                I: Iterator<Item = Self> + Clone,
-            {
             }
         }
 

@@ -115,14 +115,6 @@ where
             .extend(self.iter().map(|t| t.copy_onto(&mut target.inner)));
         (start, target.slices.len())
     }
-
-    fn reserve_items<I>(target: &mut SliceRegion<C>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        target.slices.reserve(items.clone().map(|i| i.len()).sum());
-        CopyOnto::reserve_items(&mut target.inner, items.flat_map(|i| i.iter()));
-    }
 }
 
 impl<'a, T, R: Region> ReserveItems<SliceRegion<R>> for &'a [T]
@@ -147,13 +139,6 @@ where
     fn copy_onto(self, target: &mut SliceRegion<C>) -> <SliceRegion<C> as Region>::Index {
         self.as_slice().copy_onto(target)
     }
-
-    fn reserve_items<I>(target: &mut SliceRegion<C>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        CopyOnto::reserve_items(target, items.map(Deref::deref))
-    }
 }
 
 impl<'a, T: 'a, R: Region> ReserveItems<SliceRegion<R>> for &'a Vec<T>
@@ -177,13 +162,6 @@ where
     fn copy_onto(self, target: &mut SliceRegion<C>) -> <SliceRegion<C> as Region>::Index {
         self.as_slice().copy_onto(target)
     }
-
-    fn reserve_items<I>(_target: &mut SliceRegion<C>, _items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        //CopyOnto::reserve_items(target, items.map(Deref::deref))
-    }
 }
 
 impl<'a, C: Region + 'a> CopyOnto<SliceRegion<C>> for ReadSlice<'a, C>
@@ -200,19 +178,6 @@ where
                 .map(|&index| container.index(index).copy_onto(&mut target.inner)),
         );
         (start, target.slices.len())
-    }
-
-    fn reserve_items<I>(target: &mut SliceRegion<C>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        target
-            .slices
-            .reserve(items.clone().map(|ReadSlice(_c, is)| is.len()).sum());
-        CopyOnto::reserve_items(
-            &mut target.inner,
-            items.flat_map(|ReadSlice(c, is)| is.iter().map(|i| c.index(*i))),
-        )
     }
 }
 

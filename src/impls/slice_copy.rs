@@ -50,13 +50,6 @@ where
         target.slices.extend(self);
         (start, target.slices.len())
     }
-
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        target.slices.reserve(items.clone().map(|i| i.len()).sum());
-    }
 }
 
 impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
