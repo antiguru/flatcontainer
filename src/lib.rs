@@ -54,11 +54,6 @@ pub trait CopyOnto<C: Region> {
     /// Copy self into the target container, returning an index that allows to
     /// look up the corresponding read item.
     fn copy_onto(self, target: &mut C) -> C::Index;
-
-    /// Ensure that the region can absorb `items` without reallocation.
-    fn reserve_items<I>(target: &mut C, items: I)
-    where
-        I: Iterator<Item = Self> + Clone;
 }
 
 pub trait ReserveItems<R: Region> {
@@ -258,13 +253,6 @@ mod tests {
             let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
             (name, age, hobbies)
         }
-
-        fn reserve_items<I>(_target: &mut PersonRegion, _items: I)
-        where
-            I: Iterator<Item = Self> + Clone,
-        {
-            todo!()
-        }
     }
 
     impl<'a> ReserveItems<PersonRegion> for &'a Person {
@@ -284,13 +272,6 @@ mod tests {
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = self.hobbies.copy_onto(&mut target.hobbies);
             (name, age, hobbies)
-        }
-
-        fn reserve_items<I>(_target: &mut PersonRegion, _items: I)
-        where
-            I: Iterator<Item = Self> + Clone,
-        {
-            todo!()
         }
     }
 

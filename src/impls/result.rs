@@ -64,14 +64,6 @@ where
             Err(e) => Err(e.copy_onto(&mut target.errs)),
         }
     }
-
-    fn reserve_items<I>(_target: &mut ResultRegion<TC, EC>, _items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        // CopyOnto::reserve_items(&mut target.oks, items.clone().flat_map(|r| r.ok()));
-        // CopyOnto::reserve_items(&mut target.errs, items.flat_map(|r| r.err()));
-    }
 }
 
 impl<'a, T: 'a, TC, E: 'a, EC> CopyOnto<ResultRegion<TC, EC>> for &'a Result<T, E>
@@ -90,17 +82,6 @@ where
             Ok(t) => Ok(t.copy_onto(&mut target.oks)),
             Err(e) => Err(e.copy_onto(&mut target.errs)),
         }
-    }
-
-    fn reserve_items<I>(target: &mut ResultRegion<TC, EC>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        CopyOnto::reserve_items(&mut target.oks, items.clone().flat_map(|r| r.as_ref().ok()));
-        CopyOnto::reserve_items(
-            &mut target.errs,
-            items.clone().flat_map(|r| r.as_ref().err()),
-        );
     }
 }
 
