@@ -191,7 +191,8 @@ fn _bench_clone<T: Containerized + Eq + Clone>(bencher: &mut Bencher, record: T)
 }
 
 fn _bench_realloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
-where for<'a> &'a T: CopyOnto<<T as Containerized>::Region>
+where
+    for<'a> &'a T: CopyOnto<<T as Containerized>::Region>,
 {
     bencher.iter(|| {
         // prepare encoded data for bencher.bytes
@@ -203,7 +204,9 @@ where for<'a> &'a T: CopyOnto<<T as Containerized>::Region>
 }
 
 fn _bench_prealloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
-    where for<'a> &'a T: ReserveItems<<T as Containerized>::Region> + CopyOnto<<T as Containerized>::Region>
+where
+    for<'a> &'a T:
+        ReserveItems<<T as Containerized>::Region> + CopyOnto<<T as Containerized>::Region>,
 {
     bencher.iter(|| {
         // prepare encoded data for bencher.bytes

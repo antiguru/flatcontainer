@@ -1,3 +1,6 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 mod impls;
 
 pub use impls::mirror::MirrorRegion;
@@ -5,6 +8,16 @@ pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_copy::CopyRegion;
 pub use impls::string::StringRegion;
+
+#[cfg(feature = "serde")]
+pub trait Index: Copy + Serialize + for<'a> Deserialize<'a> {}
+#[cfg(feature = "serde")]
+impl<T: Copy + Serialize + for<'a> Deserialize<'a>> Index for T {}
+
+#[cfg(not(feature = "serde"))]
+pub trait Index: Copy {}
+#[cfg(not(feature = "serde"))]
+impl<T: Copy> Index for T {}
 
 /// A region to store data.
 pub trait Region: Default {
@@ -15,7 +28,7 @@ pub trait Region: Default {
 
     /// The type to index into the container. Should be treated
     /// as an opaque type, even if known.
-    type Index: Copy;
+    type Index: Index;
 
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
@@ -63,6 +76,14 @@ impl<T: Containerized> Containerized for [T] {
     type Region = SliceRegion<T::Region>;
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "R: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
+    )
+)]
 pub struct FlatStack<R: Region> {
     indices: Vec<R::Index>,
     region: R,
@@ -117,14 +138,16 @@ impl<R: Region> FlatStack<R> {
         self.region.clear();
     }
 
-    pub fn reserve_items<T>(&mut self, items: impl Iterator<Item=T> + Clone)
-        where T: ReserveItems<R>,
+    pub fn reserve_items<T>(&mut self, items: impl Iterator<Item = T> + Clone)
+    where
+        T: ReserveItems<R>,
     {
         ReserveItems::reserve_items(&mut self.region, items);
     }
 
-    pub fn reserve_regions<'a>(&mut self, regions: impl Iterator<Item=&'a R> + Clone)
-    where R: 'a
+    pub fn reserve_regions<'a>(&mut self, regions: impl Iterator<Item = &'a R> + Clone)
+    where
+        R: 'a,
     {
         self.region.reserve_regions(regions)
     }

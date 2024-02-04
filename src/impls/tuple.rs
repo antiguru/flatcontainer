@@ -1,5 +1,7 @@
 /// Implementation for tuples.
 use paste::paste;
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
 
 use crate::{Containerized, CopyOnto, Region, ReserveItems};
 
@@ -12,13 +14,17 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
-            #[derive(Default)]
+            #[derive(Default, Clone, Debug)]
+            #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
             pub struct [<Tuple $($name)* Region >]<$($name),*> {
                 $([<container $name>]: $name),*
             }
 
             #[allow(non_snake_case)]
-            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*> {
+            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
+            where
+               $(<$name as Region>::Index: crate::Index),*
+            {
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
 
                 type Index = ($($name::Index,)*);
@@ -127,19 +133,23 @@ tuple_flatcontainer!(A B C D E F G H I J K L M);
 tuple_flatcontainer!(A B C D E F G H I J K L M N);
 tuple_flatcontainer!(A B C D E F G H I J K L M N O);
 tuple_flatcontainer!(A B C D E F G H I J K L M N O P);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD AE);
-tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD AE AF);
+cfg_if::cfg_if! {
+    if #[cfg(not(feature="serde"))] {
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD AE);
+        tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD AE AF);
+    }
+}

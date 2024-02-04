@@ -1,8 +1,12 @@
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::impls::slice_copy::CopyRegion;
 use crate::{Containerized, CopyOnto, Region, ReserveItems, SliceRegion};
 
 /// A region to store strings and read `&str`.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StringRegion {
     inner: CopyRegion<u8>,
 }

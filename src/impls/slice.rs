@@ -1,8 +1,13 @@
-use crate::{CopyOnto, Region, ReserveItems};
 use std::ops::Deref;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use crate::{CopyOnto, Region, ReserveItems};
+
 /// A container representing slices of data.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SliceRegion<C: Region> {
     // offsets: Vec<usize>,
     slices: Vec<C::Index>,
@@ -38,7 +43,7 @@ impl<C: Region> Region for SliceRegion<C> {
     }
 }
 
-impl<C: Region + Default> Default for SliceRegion<C> {
+impl<C: Region> Default for SliceRegion<C> {
     fn default() -> Self {
         Self {
             slices: Vec::default(),

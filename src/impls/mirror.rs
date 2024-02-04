@@ -1,9 +1,13 @@
 use std::marker::PhantomData;
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
+use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
-#[derive(Debug)]
+#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MirrorRegion<T>(PhantomData<*const T>);
 
 impl<T> Default for MirrorRegion<T> {
@@ -12,7 +16,7 @@ impl<T> Default for MirrorRegion<T> {
     }
 }
 
-impl<T: Copy> Region for MirrorRegion<T> {
+impl<T: Index> Region for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
