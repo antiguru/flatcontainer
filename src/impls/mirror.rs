@@ -16,7 +16,7 @@ impl<T> Default for MirrorRegion<T> {
     }
 }
 
-impl<T: Index> Region for MirrorRegion<T> {
+impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 

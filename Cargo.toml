@@ -23,7 +23,3 @@ default = ["serde"]
 debug = 2
 codegen-units = 1
 lto = true
-
-[[bench]]
-name = "bench"
-harness = false

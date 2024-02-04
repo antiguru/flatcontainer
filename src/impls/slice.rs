@@ -9,19 +9,18 @@ use crate::{CopyOnto, Region, ReserveItems};
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SliceRegion<C: Region> {
-    // offsets: Vec<usize>,
     slices: Vec<C::Index>,
     inner: C,
 }
 
 impl<C: Region> Region for SliceRegion<C> {
-    type ReadItem<'a> = (&'a C, &'a [C::Index]) where Self: 'a;
+    type ReadItem<'a> = ReadSlice<'a, C> where Self: 'a;
     type Index = (usize, usize);
 
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
         let slice = &self.slices[start..end];
-        (&self.inner, slice)
+        ReadSlice(&self.inner, slice)
     }
 
     #[inline]
@@ -37,7 +36,6 @@ impl<C: Region> Region for SliceRegion<C> {
 
     #[inline]
     fn clear(&mut self) {
-        // self.offsets.clear();
         self.slices.clear();
         self.inner.clear();
     }
@@ -49,6 +47,58 @@ impl<C: Region> Default for SliceRegion<C> {
             slices: Vec::default(),
             inner: C::default(),
         }
+    }
+}
+
+/// A helper to read data out of a slice region.
+#[derive(Debug)]
+pub struct ReadSlice<'a, C: Region>(pub &'a C, pub &'a [C::Index]);
+
+impl<'a, C: Region> ReadSlice<'a, C> {
+    /// Read the n-th item from the underlying region.
+    #[inline]
+    pub fn get(&self, index: usize) -> C::ReadItem<'_> {
+        self.0.index(self.1[index])
+    }
+
+    /// The number in this slice.
+    pub fn len(&self) -> usize {
+        self.1.len()
+    }
+
+    /// Test if this slice is empty.
+    pub fn is_empty(&self) -> bool {
+        self.1.is_empty()
+    }
+}
+
+impl<'a, C: Region> Clone for ReadSlice<'a, C> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(self.0, self.1)
+    }
+}
+
+impl<'a, C: Region> Copy for ReadSlice<'a, C> {}
+
+impl<'a, C: Region> IntoIterator for ReadSlice<'a, C> {
+    type Item = C::ReadItem<'a>;
+    type IntoIter = ReadSliceIter<'a, C>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ReadSliceIter(self.0, self.1.iter())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ReadSliceIter<'a, C: Region>(&'a C, std::slice::Iter<'a, C::Index>);
+
+impl<'a, C: Region> Iterator for ReadSliceIter<'a, C> {
+    type Item = C::ReadItem<'a>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.1.next().map(|idx| self.0.index(*idx))
     }
 }
 
@@ -136,13 +186,13 @@ where
     }
 }
 
-impl<'a, C: Region + 'a> CopyOnto<SliceRegion<C>> for &'a (&'a C, &'a [C::Index])
+impl<'a, C: Region + 'a> CopyOnto<SliceRegion<C>> for ReadSlice<'a, C>
 where
     C::ReadItem<'a>: CopyOnto<C>,
 {
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<C>) -> <SliceRegion<C> as Region>::Index {
-        let (container, indexes) = self;
+        let ReadSlice(container, indexes) = self;
         let start = target.slices.len();
         target.slices.extend(
             indexes
@@ -158,10 +208,10 @@ where
     {
         target
             .slices
-            .reserve(items.clone().map(|(_c, is)| is.len()).sum());
+            .reserve(items.clone().map(|ReadSlice(_c, is)| is.len()).sum());
         CopyOnto::reserve_items(
             &mut target.inner,
-            items.flat_map(|(c, is)| is.iter().map(|i| c.index(*i))),
+            items.flat_map(|ReadSlice(c, is)| is.iter().map(|i| c.index(*i))),
         )
     }
 }
