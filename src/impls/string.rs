@@ -38,6 +38,10 @@ impl Containerized for String {
     type Region = StringRegion;
 }
 
+impl<'a> Containerized for &'a str {
+    type Region = StringRegion;
+}
+
 impl CopyOnto<StringRegion> for &String {
     #[inline]
     fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {

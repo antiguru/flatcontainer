@@ -3,7 +3,19 @@ use std::ops::Deref;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, Region, ReserveItems};
+
+impl<T: Containerized> Containerized for Vec<T> {
+    type Region = SliceRegion<T::Region>;
+}
+
+impl<T: Containerized> Containerized for [T] {
+    type Region = SliceRegion<T::Region>;
+}
+
+impl<T: Containerized, const N: usize> Containerized for [T; N] {
+    type Region = SliceRegion<T::Region>;
+}
 
 /// A container representing slices of data.
 #[derive(Debug, Clone)]
@@ -75,7 +87,7 @@ impl<'a, C: Region> ReadSlice<'a, C> {
 impl<'a, C: Region> Clone for ReadSlice<'a, C> {
     #[inline]
     fn clone(&self) -> Self {
-        Self(self.0, self.1)
+        *self
     }
 }
 
@@ -178,6 +190,38 @@ where
                 .map(|&index| container.index(index).copy_onto(&mut target.inner)),
         );
         (start, target.slices.len())
+    }
+}
+
+impl<'a, T, R: Region, const N: usize> CopyOnto<SliceRegion<R>> for &'a [T; N]
+where
+    for<'b> &'b [T]: CopyOnto<SliceRegion<R>>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R>) -> <SliceRegion<R> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<'a, T: 'a, R: Region, const N: usize> ReserveItems<SliceRegion<R>> for &'a [T; N]
+where
+    &'a T: ReserveItems<R>,
+{
+    fn reserve_items<I>(target: &mut SliceRegion<R>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        ReserveItems::reserve_items(target, items.map(|item| item.as_slice()))
+    }
+}
+
+impl<T, R: Region, const N: usize> CopyOnto<SliceRegion<R>> for [T; N]
+where
+    for<'a> &'a [T]: CopyOnto<SliceRegion<R>>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R>) -> <SliceRegion<R> as Region>::Index {
+        self.as_slice().copy_onto(target)
     }
 }
 
