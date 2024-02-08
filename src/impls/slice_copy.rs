@@ -72,8 +72,28 @@ where
 
 impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
     fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+        where
+            I: Iterator<Item = Self> + Clone,
+    {
+        target.slices.reserve(items.clone().map(|i| i.len()).sum());
+    }
+}
+
+impl<T> CopyOnto<CopyRegion<T>> for &Vec<T>
     where
-        I: Iterator<Item = Self> + Clone,
+        T: Copy,
+{
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        let start = target.slices.len();
+        target.slices.extend_from_slice(self);
+        (start, target.slices.len())
+    }
+}
+
+impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
+    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+        where
+            I: Iterator<Item = Self> + Clone,
     {
         target.slices.reserve(items.clone().map(|i| i.len()).sum());
     }
