@@ -368,7 +368,7 @@ mod tests {
 
     impl<'a> CopyOnto<PersonRegion> for &'a Person {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
-            let name = self.name.copy_onto(&mut target.name_container);
+            let name = (&self.name).copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
             (name, age, hobbies)
