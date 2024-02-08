@@ -93,8 +93,8 @@ impl CopyOnto<StringRegion> for &&str {
 
 impl ReserveItems<StringRegion> for &str {
     fn reserve_items<I>(target: &mut StringRegion, items: I)
-        where
-            I: Iterator<Item = Self> + Clone,
+    where
+        I: Iterator<Item = Self> + Clone,
     {
         ReserveItems::reserve_items(&mut target.inner, items.map(str::as_bytes))
     }

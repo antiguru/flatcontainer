@@ -4,9 +4,12 @@
 
 extern crate test;
 
-use flatcontainer::{Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region, ReserveItems, SliceRegion, StringRegion};
-use test::Bencher;
 use flatcontainer::impls::tuple::TupleABCRegion;
+use flatcontainer::{
+    Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region, ReserveItems,
+    SliceRegion, StringRegion,
+};
+use test::Bencher;
 
 #[bench]
 fn empty_copy(bencher: &mut Bencher) {
@@ -92,7 +95,10 @@ fn vec_u_s_copy_region(bencher: &mut Bencher) {
 }
 #[bench]
 fn vec_u_vn_s_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, CopyRegion<_>, StringRegion>>>, _>(
+    _bench_copy_region::<
+        SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, CopyRegion<_>, StringRegion>>>,
+        _,
+    >(
         bencher,
         vec![vec![(0u64, vec![(); 1 << 40], "grawwwwrr!".to_string()); 32]; 32],
     );
