@@ -29,6 +29,8 @@
 
 #![deny(missing_docs)]
 
+use std::fmt::{Debug, Formatter};
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -119,7 +121,7 @@ pub trait ReserveItems<R: Region> {
 }
 
 /// A container for indices into a region.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",
@@ -141,6 +143,15 @@ impl<R: Region> Default for FlatStack<R> {
             indices: Vec::default(),
             region: R::default(),
         }
+    }
+}
+
+impl<R: Region> Debug for FlatStack<R>
+where
+    for<'a> R::ReadItem<'a>: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
@@ -254,6 +265,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_readme() {
+        let r: Result<_, u16> = Ok("abc");
+        let mut c = FlatStack::default_impl::<Result<&str, u16>>();
+        c.copy(&r);
+        assert_eq!(r, c.get(0));
+    }
+
+    #[test]
     fn test_slice_string_onto() {
         let mut c = StringRegion::default();
         let index = "abc".to_string().copy_onto(&mut c);
@@ -349,7 +368,7 @@ mod tests {
 
     impl<'a> CopyOnto<PersonRegion> for &'a Person {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
-            let name = self.name.copy_onto(&mut target.name_container);
+            let name = (&self.name).copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
             (name, age, hobbies)
@@ -421,6 +440,8 @@ mod tests {
         fn test_copy<T, C: Region + Clone>(t: T)
         where
             T: CopyOnto<C>,
+            // Make sure that types are debug, even if we don't use this in the test.
+            for<'a> C::ReadItem<'a>: Debug,
         {
             let mut c = FlatStack::default();
             c.copy(t);

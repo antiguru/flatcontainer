@@ -1,5 +1,6 @@
 //! A region that copies its inputs.
 
+use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
 #[cfg(feature = "serde")]
@@ -23,13 +24,19 @@ use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
 /// let output: u8 = r.index(42);
 /// assert_eq!(output, 42);
 /// ```
-#[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct MirrorRegion<T>(PhantomData<*const T>);
+pub struct MirrorRegion<T>(PhantomData<T>);
 
 impl<T> Default for MirrorRegion<T> {
     fn default() -> Self {
         Self(PhantomData)
+    }
+}
+
+impl<T> Debug for MirrorRegion<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "MirrorRegion<{}>", std::any::type_name::<T>())
     }
 }
 

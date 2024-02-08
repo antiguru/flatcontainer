@@ -1,5 +1,6 @@
 //! A region that stores slices.
 
+use std::fmt::{Debug, Formatter};
 use std::ops::Deref;
 
 #[cfg(feature = "serde")]
@@ -95,7 +96,6 @@ impl<C: Region> Default for SliceRegion<C> {
 }
 
 /// A helper to read data out of a slice region.
-#[derive(Debug)]
 pub struct ReadSlice<'a, C: Region>(pub &'a C, pub &'a [C::Index]);
 
 impl<'a, C: Region> ReadSlice<'a, C> {
@@ -118,6 +118,15 @@ impl<'a, C: Region> ReadSlice<'a, C> {
     /// Returns an iterator over all contained items.
     pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
         self.into_iter()
+    }
+}
+
+impl<'a, C: Region> Debug for ReadSlice<'a, C>
+where
+    C::ReadItem<'a>: Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
