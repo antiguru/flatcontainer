@@ -1,3 +1,5 @@
+//! A region that copies its inputs.
+
 use std::marker::PhantomData;
 
 #[cfg(feature = "serde")]
@@ -6,6 +8,21 @@ use serde::{Deserialize, Serialize};
 use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
+///
+/// This region is useful where the type is not larger than roughly two `usize`s (or 1.5x with
+/// some optimizations), or looking up the value is too costly. For larger copy types, the memory
+/// required to store the copy type and an index is only marginally bigger, with the benefit
+/// that the index remains compact.
+///
+/// # Examples
+///
+/// For [`MirrorRegion`]s, we can index with a copy type:
+/// ```
+/// # use flatcontainer::{MirrorRegion, Region};
+/// let r = MirrorRegion::<u8>::default();
+/// let output: u8 = r.index(42);
+/// assert_eq!(output, 42);
+/// ```
 #[derive(Debug, Clone, Ord, PartialOrd, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct MirrorRegion<T>(PhantomData<*const T>);

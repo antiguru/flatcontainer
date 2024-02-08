@@ -1,3 +1,5 @@
+//! A region that stores options.
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -8,18 +10,30 @@ impl<T: Containerized> Containerized for Option<T> {
 }
 
 /// A region to hold [`Option`]s.
+///
+/// # Examples
+///
+/// The region can hold options:
+/// ```
+/// # use flatcontainer::{Containerized, CopyOnto, OptionRegion, Region};
+/// let mut r = OptionRegion::<<u8 as Containerized>::Region>::default();
+///
+/// let some_index = Some(123).copy_onto(&mut r);
+/// // Type annotations required for `None`:
+/// let none_index = Option::<u8>::None.copy_onto(&mut r);
+///
+/// assert_eq!(Some(123), r.index(some_index));
+/// assert_eq!(None, r.index(none_index));
+/// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OptionRegion<T> {
-    inner: T,
+pub struct OptionRegion<R> {
+    inner: R,
 }
 
-impl<T> Region for OptionRegion<T>
-where
-    T: Region,
-{
-    type ReadItem<'a> = Option<T::ReadItem<'a>> where Self: 'a;
-    type Index = Option<T::Index>;
+impl<R: Region> Region for OptionRegion<R> {
+    type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
+    type Index = Option<R::Index>;
 
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
@@ -42,34 +56,34 @@ where
     }
 }
 
-impl<T, TC> CopyOnto<OptionRegion<TC>> for Option<T>
+impl<T, TR> CopyOnto<OptionRegion<TR>> for Option<T>
 where
-    TC: Region,
-    T: CopyOnto<TC>,
+    TR: Region,
+    T: CopyOnto<TR>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TC>) -> <OptionRegion<TC> as Region>::Index {
+    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
         self.map(|t| t.copy_onto(&mut target.inner))
     }
 }
 
-impl<'a, T: 'a, TC> CopyOnto<OptionRegion<TC>> for &'a Option<T>
+impl<'a, T: 'a, TR> CopyOnto<OptionRegion<TR>> for &'a Option<T>
 where
-    TC: Region,
-    &'a T: CopyOnto<TC>,
+    TR: Region,
+    &'a T: CopyOnto<TR>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TC>) -> <OptionRegion<TC> as Region>::Index {
+    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
         self.as_ref().map(|t| t.copy_onto(&mut target.inner))
     }
 }
 
-impl<'a, T: 'a, TC> ReserveItems<OptionRegion<TC>> for &'a Option<T>
+impl<'a, T: 'a, TR> ReserveItems<OptionRegion<TR>> for &'a Option<T>
 where
-    TC: Region,
-    &'a T: ReserveItems<TC>,
+    TR: Region,
+    &'a T: ReserveItems<TR>,
 {
-    fn reserve_items<I>(target: &mut OptionRegion<TC>, items: I)
+    fn reserve_items<I>(target: &mut OptionRegion<TR>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {

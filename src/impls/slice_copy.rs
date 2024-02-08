@@ -1,9 +1,27 @@
+//! A region that stores slices of copy types.
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
 use crate::{CopyOnto, Region, ReserveItems};
 
 /// A container for [`Copy`] types.
+///
+/// # Examples
+///
+/// ```
+/// use flatcontainer::{CopyOnto, CopyRegion, Region};
+/// let mut r = CopyRegion::<u8>::default();
+///
+/// let panagram_en = "The quick fox jumps over the lazy dog";
+/// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";
+///
+/// let en_index = panagram_en.as_bytes().copy_onto(&mut r);
+/// let de_index = panagram_de.as_bytes().copy_onto(&mut r);
+///
+/// assert_eq!(panagram_de.as_bytes(), r.index(de_index));
+/// assert_eq!(panagram_en.as_bytes(), r.index(en_index));
+/// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CopyRegion<T: Copy> {
@@ -47,7 +65,7 @@ where
 {
     fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
         let start = target.slices.len();
-        target.slices.extend(self);
+        target.slices.extend_from_slice(self);
         (start, target.slices.len())
     }
 }

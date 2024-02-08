@@ -1,3 +1,5 @@
+//! A region that stores strings.
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -5,6 +7,23 @@ use crate::impls::slice_copy::CopyRegion;
 use crate::{Containerized, CopyOnto, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
+///
+/// # Examples
+///
+/// We fill some data into a string region and use extract it later.
+/// ```
+/// use flatcontainer::{Containerized, CopyOnto, Region, StringRegion};
+/// let mut r = StringRegion::default();
+///
+/// let panagram_en = "The quick fox jumps over the lazy dog";
+/// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";
+///
+/// let en_index = panagram_en.copy_onto(&mut r);
+/// let de_index = panagram_de.copy_onto(&mut r);
+///
+/// assert_eq!(panagram_de, r.index(de_index));
+/// assert_eq!(panagram_en, r.index(en_index));
+/// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct StringRegion {

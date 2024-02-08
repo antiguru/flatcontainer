@@ -1,3 +1,5 @@
+//! A region that stores slices.
+
 use std::ops::Deref;
 
 #[cfg(feature = "serde")]
@@ -18,10 +20,40 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 }
 
 /// A container representing slices of data.
+///
+/// Reading from this region is more involved than for others, because the data only exists in
+/// an indexable representation. The read item is a [`ReadSlice`], which can be iterated or indexed.
+/// However, it is not possible to represent the data as a slice, simply because the slice doesn't
+/// exist.
+///
+/// # Examples
+///
+/// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
+/// ```
+/// use flatcontainer::{Containerized, CopyOnto, Region, SliceRegion};
+/// let mut r = SliceRegion::<<String as Containerized>::Region>::default();
+///
+/// let panagram_en = "The quick fox jumps over the lazy dog"
+///     .split(" ")
+///     .collect::<Vec<_>>();
+/// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich"
+///     .split(" ")
+///     .collect::<Vec<_>>();
+///
+/// let en_index = (&panagram_en).copy_onto(&mut r);
+/// let de_index = (&panagram_de).copy_onto(&mut r);
+///
+/// assert!(panagram_de.into_iter().eq(r.index(de_index)));
+/// assert!(panagram_en.into_iter().eq(r.index(en_index)));
+///
+/// assert_eq!(r.index(de_index).get(2), "jagen");
+/// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SliceRegion<C: Region> {
+    /// Container of slices.
     slices: Vec<C::Index>,
+    /// Inner region.
     inner: C,
 }
 
@@ -78,9 +110,14 @@ impl<'a, C: Region> ReadSlice<'a, C> {
         self.1.len()
     }
 
-    /// Test if this slice is empty.
+    /// Returns `true` if the slice is empty.
     pub fn is_empty(&self) -> bool {
         self.1.is_empty()
+    }
+
+    /// Returns an iterator over all contained items.
+    pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
+        self.into_iter()
     }
 }
 
@@ -102,6 +139,7 @@ impl<'a, C: Region> IntoIterator for ReadSlice<'a, C> {
     }
 }
 
+/// An iterator over the items read from a slice region.
 #[derive(Debug, Clone)]
 pub struct ReadSliceIter<'a, C: Region>(&'a C, std::slice::Iter<'a, C::Index>);
 

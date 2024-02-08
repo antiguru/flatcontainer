@@ -32,9 +32,10 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-mod impls;
+pub mod impls;
 
 pub use impls::mirror::MirrorRegion;
+pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_copy::CopyRegion;
@@ -98,6 +99,8 @@ pub trait CopyOnto<C: Region> {
     fn copy_onto(self, target: &mut C) -> C::Index;
 }
 
+// Blanket implementation for `Box`. This might be a bad idea because it precludes blanket
+// implementations.
 impl<R: Region, T> CopyOnto<R> for Box<T>
 where
     for<'a> &'a T: CopyOnto<R>,
