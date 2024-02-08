@@ -1,6 +1,9 @@
-pub(crate) mod mirror;
-pub(crate) mod result;
-pub(crate) mod slice;
-pub(crate) mod slice_copy;
-pub(crate) mod string;
-pub(crate) mod tuple;
+//! Various region implementations.
+
+pub mod mirror;
+pub mod option;
+pub mod result;
+pub mod slice;
+pub mod slice_copy;
+pub mod string;
+pub mod tuple;

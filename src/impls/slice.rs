@@ -1,15 +1,59 @@
+//! A region that stores slices.
+
 use std::ops::Deref;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, Region, ReserveItems};
+
+impl<T: Containerized> Containerized for Vec<T> {
+    type Region = SliceRegion<T::Region>;
+}
+
+impl<T: Containerized> Containerized for [T] {
+    type Region = SliceRegion<T::Region>;
+}
+
+impl<T: Containerized, const N: usize> Containerized for [T; N] {
+    type Region = SliceRegion<T::Region>;
+}
 
 /// A container representing slices of data.
+///
+/// Reading from this region is more involved than for others, because the data only exists in
+/// an indexable representation. The read item is a [`ReadSlice`], which can be iterated or indexed.
+/// However, it is not possible to represent the data as a slice, simply because the slice doesn't
+/// exist.
+///
+/// # Examples
+///
+/// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
+/// ```
+/// use flatcontainer::{Containerized, CopyOnto, Region, SliceRegion};
+/// let mut r = SliceRegion::<<String as Containerized>::Region>::default();
+///
+/// let panagram_en = "The quick fox jumps over the lazy dog"
+///     .split(" ")
+///     .collect::<Vec<_>>();
+/// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich"
+///     .split(" ")
+///     .collect::<Vec<_>>();
+///
+/// let en_index = (&panagram_en).copy_onto(&mut r);
+/// let de_index = (&panagram_de).copy_onto(&mut r);
+///
+/// assert!(panagram_de.into_iter().eq(r.index(de_index)));
+/// assert!(panagram_en.into_iter().eq(r.index(en_index)));
+///
+/// assert_eq!(r.index(de_index).get(2), "jagen");
+/// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct SliceRegion<C: Region> {
+    /// Container of slices.
     slices: Vec<C::Index>,
+    /// Inner region.
     inner: C,
 }
 
@@ -66,16 +110,21 @@ impl<'a, C: Region> ReadSlice<'a, C> {
         self.1.len()
     }
 
-    /// Test if this slice is empty.
+    /// Returns `true` if the slice is empty.
     pub fn is_empty(&self) -> bool {
         self.1.is_empty()
+    }
+
+    /// Returns an iterator over all contained items.
+    pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
+        self.into_iter()
     }
 }
 
 impl<'a, C: Region> Clone for ReadSlice<'a, C> {
     #[inline]
     fn clone(&self) -> Self {
-        Self(self.0, self.1)
+        *self
     }
 }
 
@@ -90,6 +139,7 @@ impl<'a, C: Region> IntoIterator for ReadSlice<'a, C> {
     }
 }
 
+/// An iterator over the items read from a slice region.
 #[derive(Debug, Clone)]
 pub struct ReadSliceIter<'a, C: Region>(&'a C, std::slice::Iter<'a, C::Index>);
 
@@ -178,6 +228,38 @@ where
                 .map(|&index| container.index(index).copy_onto(&mut target.inner)),
         );
         (start, target.slices.len())
+    }
+}
+
+impl<'a, T, R: Region, const N: usize> CopyOnto<SliceRegion<R>> for &'a [T; N]
+where
+    for<'b> &'b [T]: CopyOnto<SliceRegion<R>>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R>) -> <SliceRegion<R> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<'a, T: 'a, R: Region, const N: usize> ReserveItems<SliceRegion<R>> for &'a [T; N]
+where
+    &'a T: ReserveItems<R>,
+{
+    fn reserve_items<I>(target: &mut SliceRegion<R>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        ReserveItems::reserve_items(target, items.map(|item| item.as_slice()))
+    }
+}
+
+impl<T, R: Region, const N: usize> CopyOnto<SliceRegion<R>> for [T; N]
+where
+    for<'a> &'a [T]: CopyOnto<SliceRegion<R>>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R>) -> <SliceRegion<R> as Region>::Index {
+        self.as_slice().copy_onto(target)
     }
 }
 

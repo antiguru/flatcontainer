@@ -1,4 +1,5 @@
-/// Implementation for tuples.
+//! Regions that stores tuples.
+
 use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ macro_rules! tuple_flatcontainer {
                 type Region = [<Tuple $($name)* Region >]<$($name::Region,)*>;
             }
 
+            /// A region for a tuple.
             #[allow(non_snake_case)]
             #[derive(Default, Clone, Debug)]
             #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]

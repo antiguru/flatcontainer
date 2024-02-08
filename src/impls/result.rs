@@ -1,3 +1,5 @@
+//! A region that stores results.
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,22 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
 }
 
+/// A region to hold [`Result`]s.
+///
+/// # Examples
+///
+/// Add results to a result region:
+/// ```
+/// use flatcontainer::{Containerized, CopyOnto, Region, ResultRegion};
+/// let mut r =
+///     ResultRegion::<<() as Containerized>::Region, <String as Containerized>::Region>::default();
+///
+/// let ok_index = Result::<(), String>::Ok(()).copy_onto(&mut r);
+/// let err_index = Result::<(), String>::Err("Error".to_string()).copy_onto(&mut r);
+///
+/// assert_eq!(Ok(()), r.index(ok_index));
+/// assert_eq!(Err("Error"), r.index(err_index));
+/// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ResultRegion<T, E> {
