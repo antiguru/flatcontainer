@@ -34,6 +34,15 @@ impl Region for StringRegion {
     type ReadItem<'a> = &'a str where Self: 'a ;
     type Index = <CopyRegion<u8> as Region>::Index;
 
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            inner: CopyRegion::merge_regions(regions.map(|r| &r.inner)),
+        }
+    }
+
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }

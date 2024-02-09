@@ -74,6 +74,11 @@ pub trait Region: Default {
     /// as an opaque type, even if known.
     type Index: Index;
 
+    /// Construct a region that can absorb the contents of `regions` in the future.
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a;
+
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
@@ -101,17 +106,6 @@ pub trait CopyOnto<C: Region> {
     fn copy_onto(self, target: &mut C) -> C::Index;
 }
 
-// Blanket implementation for `Box`. This might be a bad idea because it precludes blanket
-// implementations.
-impl<R: Region, T> CopyOnto<R> for Box<T>
-where
-    for<'a> &'a T: CopyOnto<R>,
-{
-    fn copy_onto(self, target: &mut R) -> R::Index {
-        self.as_ref().copy_onto(target)
-    }
-}
-
 /// Reserve space in the receiving region.
 pub trait ReserveItems<R: Region> {
     /// Ensure that the region can absorb `items` without reallocation.
@@ -121,7 +115,6 @@ pub trait ReserveItems<R: Region> {
 }
 
 /// A container for indices into a region.
-#[derive(Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",
@@ -160,6 +153,27 @@ impl<R: Region> FlatStack<R> {
     #[inline]
     pub fn default_impl<T: Containerized<Region = R>>() -> Self {
         Self::default()
+    }
+
+    /// Returns a flat stack that can absorb `capacity` indices without reallocation.
+    ///
+    /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            indices: Vec::with_capacity(capacity),
+            region: R::default(),
+        }
+    }
+
+    /// Returns a flat stack that can absorb the contents of `iter` without reallocation.
+    pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
+    where
+        R: 'a,
+    {
+        Self {
+            indices: Vec::with_capacity(stacks.clone().map(|s| s.indices.len()).sum()),
+            region: R::merge_regions(stacks.map(|r| &r.region)),
+        }
     }
 
     /// Appends the element to the back of the stack.
@@ -225,6 +239,16 @@ impl<R: Region> FlatStack<R> {
     }
 }
 
+impl<T: CopyOnto<R>, R: Region> Extend<T> for FlatStack<R> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        let iter = iter.into_iter();
+        self.reserve(iter.size_hint().0);
+        for item in iter {
+            self.indices.push(item.copy_onto(&mut self.region));
+        }
+    }
+}
+
 impl<'a, R: Region> IntoIterator for &'a FlatStack<R> {
     type Item = R::ReadItem<'a>;
     type IntoIter = Iter<'a, R>;
@@ -260,15 +284,39 @@ impl<'a, R: Region> Iterator for Iter<'a, R> {
 
 impl<'a, R: Region> ExactSizeIterator for Iter<'a, R> {}
 
+impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        let iter = iter.into_iter();
+        let mut c = Self::with_capacity(iter.size_hint().0);
+        c.extend(iter);
+        c
+    }
+}
+
+impl<R: Region> Clone for FlatStack<R> {
+    fn clone(&self) -> Self {
+        let mut clone = Self::merge_capacity(std::iter::once(self));
+        clone.extend(self.iter());
+        clone
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+    use crate::impls::tuple::TupleARegion;
+
     use super::*;
+
+    fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
+        item.copy_onto(r)
+    }
 
     #[test]
     fn test_readme() {
         let r: Result<_, u16> = Ok("abc");
         let mut c = FlatStack::default_impl::<Result<&str, u16>>();
-        c.copy(&r);
+        c.copy(r);
         assert_eq!(r, c.get(0));
     }
 
@@ -292,10 +340,10 @@ mod tests {
 
     #[test]
     fn test_vec() {
-        let mut c = SliceRegion::default();
+        let mut c = SliceRegion::<MirrorRegion<_>>::default();
         let slice = &[1u8, 2, 3];
         let idx = slice.copy_onto(&mut c);
-        assert_eq!(slice, c.index(idx).1)
+        assert!(slice.iter().copied().eq(c.index(idx)));
     }
 
     #[test]
@@ -303,7 +351,7 @@ mod tests {
         let mut c: SliceRegion<MirrorRegion<u8>> = SliceRegion::default();
         let slice = &[1u8, 2, 3][..];
         let idx = slice.copy_onto(&mut c);
-        assert_eq!(slice, c.index(idx).1)
+        assert!(slice.iter().copied().eq(c.index(idx)));
     }
 
     struct Person {
@@ -337,6 +385,23 @@ mod tests {
             <<u16 as Containerized>::Region as Region>::Index,
             <<Vec<String> as Containerized>::Region as Region>::Index,
         );
+
+        fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+        where
+            Self: 'a,
+        {
+            Self {
+                name_container: <String as Containerized>::Region::merge_regions(
+                    regions.clone().map(|r| &r.name_container),
+                ),
+                age_container: <u16 as Containerized>::Region::merge_regions(
+                    regions.clone().map(|r| &r.age_container),
+                ),
+                hobbies: <Vec<String> as Containerized>::Region::merge_regions(
+                    regions.map(|r| &r.hobbies),
+                ),
+            }
+        }
 
         fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
             PersonRef {
@@ -409,9 +474,9 @@ mod tests {
         let person_ref = c.get(0);
         assert_eq!("Moritz", person_ref.name);
         assert_eq!(123, person_ref.age);
-        assert_eq!(2, person_ref.hobbies.1.len());
-        for (idx, hobby) in person_ref.hobbies.1.iter().zip(hobbies) {
-            assert_eq!(hobby, person_ref.hobbies.0.index(*idx));
+        assert_eq!(2, person_ref.hobbies.len());
+        for (copied_hobby, hobby) in person_ref.hobbies.iter().zip(hobbies) {
+            assert_eq!(copied_hobby, hobby);
         }
 
         let mut cc = FlatStack::default_impl::<Person>();
@@ -421,17 +486,17 @@ mod tests {
         let person_ref = cc.get(0);
         assert_eq!("Moritz", person_ref.name);
         assert_eq!(123, person_ref.age);
-        assert_eq!(2, person_ref.hobbies.1.len());
-        for (idx, hobby) in person_ref.hobbies.1.iter().zip(hobbies) {
-            assert_eq!(hobby, person_ref.hobbies.0.index(*idx));
+        assert_eq!(2, person_ref.hobbies.len());
+        for (copied_hobby, hobby) in person_ref.hobbies.iter().zip(hobbies) {
+            assert_eq!(copied_hobby, hobby);
         }
     }
 
     #[test]
     fn test_result() {
         let r: Result<_, u16> = Ok("abc");
-        let mut c = ResultRegion::default();
-        let idx = r.copy_onto(&mut c);
+        let mut c = ResultRegion::<StringRegion, MirrorRegion<_>>::default();
+        let idx = copy(&mut c, r);
         assert_eq!(r, c.index(idx));
     }
 
@@ -500,35 +565,41 @@ mod tests {
         test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0isize));
         test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0isize));
 
-        test_copy::<_, ResultRegion<_, _>>(Result::<u8, u8>::Ok(0));
-        test_copy::<_, ResultRegion<_, _>>(&Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<MirrorRegion<_>, MirrorRegion<_>>>(Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<MirrorRegion<_>, MirrorRegion<_>>>(&Result::<u8, u8>::Ok(0));
 
-        test_copy::<_, SliceRegion<_>>([0u8].as_slice());
-        test_copy::<_, SliceRegion<_>>(vec![0u8]);
-        test_copy::<_, SliceRegion<_>>(&vec![0u8]);
+        test_copy::<_, SliceRegion<MirrorRegion<_>>>([0u8].as_slice());
+        test_copy::<_, SliceRegion<MirrorRegion<_>>>(vec![0u8]);
+        test_copy::<_, SliceRegion<MirrorRegion<_>>>(&vec![0u8]);
 
-        test_copy::<_, SliceRegion<_>>(["a"].as_slice());
-        test_copy::<_, SliceRegion<_>>(vec!["a"]);
-        test_copy::<_, SliceRegion<_>>(&vec!["a"]);
+        test_copy::<_, SliceRegion<StringRegion>>(["a"].as_slice());
+        test_copy::<_, SliceRegion<StringRegion>>(vec!["a"]);
+        test_copy::<_, SliceRegion<StringRegion>>(&vec!["a"]);
 
-        test_copy::<_, SliceRegion<_>>([("a",)].as_slice());
-        test_copy::<_, SliceRegion<_>>(vec![("a",)]);
-        test_copy::<_, SliceRegion<_>>(&vec![("a",)]);
+        test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>([("a",)].as_slice());
+        test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>(vec![("a",)]);
+        test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>(&vec![("a",)]);
 
         test_copy::<_, CopyRegion<_>>([0u8].as_slice());
 
         test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
+
+        test_copy::<_, ConsecutiveOffsetPairs<CopyRegion<_>>>([1, 2, 3].as_slice());
+
+        test_copy::<_, CollapseSequence<CopyRegion<_>>>([1, 2, 3].as_slice());
     }
 
     #[test]
     fn slice_region_read_item() {
+        fn is_clone<T: Clone>(_: &T) {}
+
         let mut c = FlatStack::<SliceRegion<MirrorRegion<u8>>>::default();
         c.copy(vec![1, 2, 3]);
 
         let mut r = SliceRegion::<MirrorRegion<u8>>::default();
         let idx = [1, 2, 3].copy_onto(&mut r);
         let read_item = r.index(idx);
-        let _read_item2 = read_item.clone();
+        is_clone(&read_item);
         let _read_item3 = read_item;
         assert_eq!(vec![1, 2, 3], read_item.into_iter().collect::<Vec<_>>());
     }

@@ -4,7 +4,9 @@
 
 extern crate test;
 
-use flatcontainer::impls::tuple::TupleABCRegion;
+use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+use flatcontainer::impls::offsets::OffsetOptimized;
+use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
     Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region, ReserveItems,
     SliceRegion, StringRegion,
@@ -80,15 +82,25 @@ fn str100_copy_region(bencher: &mut Bencher) {
 }
 #[bench]
 fn string10_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<SliceRegion<_>, _>(bencher, vec![format!("grawwwwrr!"); 1024]);
+    _bench_copy_region::<SliceRegion<StringRegion>, _>(bencher, vec![format!("grawwwwrr!"); 1024]);
+}
+#[bench]
+fn string10_copy_region_collapse(bencher: &mut Bencher) {
+    _bench_copy_region::<
+        SliceRegion<CollapseSequence<ConsecutiveOffsetPairs<StringRegion>>, OffsetOptimized>,
+        _,
+    >(bencher, vec![format!("grawwwwrr!"); 1024]);
 }
 #[bench]
 fn string20_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<SliceRegion<_>, _>(bencher, vec![format!("grawwwwrr!!!!!!!!!!!"); 512]);
+    _bench_copy_region::<SliceRegion<StringRegion>, _>(
+        bencher,
+        vec![format!("grawwwwrr!!!!!!!!!!!"); 512],
+    );
 }
 #[bench]
 fn vec_u_s_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<SliceRegion<_>, _>(
+    _bench_copy_region::<SliceRegion<SliceRegion<TupleABRegion<MirrorRegion<_>, StringRegion>>>, _>(
         bencher,
         vec![vec![(0u64, "grawwwwrr!".to_string()); 32]; 32],
     );
