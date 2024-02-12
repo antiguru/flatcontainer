@@ -1,7 +1,8 @@
 //! Simple deduplication of equal consecutive items.
 
-use crate::impls::offsets::OffsetContainer;
+use crate::impls::offsets::{OffsetContainer, OffsetRegion};
 use crate::{CopyOnto, Region};
+use crate::impls::vec::CopyVector;
 
 /// A region to deduplicate consecutive equal items.
 #[derive(Debug, Clone)]
@@ -79,10 +80,10 @@ where
 /// Defers to region `R` for storing items, and uses offset container `O` to
 /// rember indices. By default, `O` is `Vec<usize>`.
 #[derive(Debug, Clone)]
-pub struct ConsecutiveOffsetPairs<R, O = Vec<usize>>
+pub struct ConsecutiveOffsetPairs<R, O = CopyVector<usize>>
 where
     R: Region<Index = (usize, usize)>,
-    O: OffsetContainer<usize>,
+    O: OffsetRegion, usize: CopyOnto<O>,
 {
     /// Wrapped region
     inner: R,
@@ -92,8 +93,9 @@ where
     last_index: usize,
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
+impl<R: Region<Index = (usize, usize)>, O: OffsetRegion> Default
     for ConsecutiveOffsetPairs<R, O>
+where usize: CopyOnto<O>,
 {
     fn default() -> Self {
         let mut d = Self {
@@ -101,13 +103,14 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
             offsets: Default::default(),
             last_index: 0,
         };
-        d.offsets.push(0);
+        0.copy_onto(&mut d.offsets);
         d
     }
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
+impl<R: Region<Index = (usize, usize)>, O: OffsetRegion> Region
     for ConsecutiveOffsetPairs<R, O>
+    where usize: CopyOnto<O>,
 {
     type ReadItem<'a> = R::ReadItem<'a>
     where
@@ -120,7 +123,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
         Self: 'a,
     {
         let mut offsets = O::default();
-        offsets.push(0);
+        0.copy_onto(&mut offsets);
         Self {
             inner: R::merge_regions(regions.clone().map(|r| &r.inner)),
             offsets,
@@ -145,12 +148,13 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
         self.last_index = 0;
         self.inner.clear();
         self.offsets.clear();
-        self.offsets.push(0);
+        0.copy_onto(&mut self.offsets);
     }
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R>>
+impl<R: Region<Index = (usize, usize)>, O: OffsetRegion, T: CopyOnto<R>>
     CopyOnto<ConsecutiveOffsetPairs<R, O>> for T
+    where usize: CopyOnto<O>,
 {
     fn copy_onto(
         self,
@@ -159,7 +163,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R
         let index = self.copy_onto(&mut target.inner);
         debug_assert_eq!(index.0, target.last_index);
         target.last_index = index.1;
-        target.offsets.push(index.1);
+        index.1.copy_onto(&mut target.offsets);
         target.offsets.len() - 2
     }
 }

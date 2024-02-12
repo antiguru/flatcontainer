@@ -1,5 +1,18 @@
 //! Types to represent offsets.
 
+use crate::{CopyOnto, Region};
+
+pub trait OffsetRegion
+where
+    for<'a> Self: Region<ReadItem<'a> = usize, Index=usize> + 'a,
+    usize: CopyOnto<Self>,
+{
+}
+
+impl<R> OffsetRegion for R where for<'a> Self: Region<ReadItem<'a> = usize, Index=usize> + 'a,
+usize: CopyOnto<Self>,
+{}
+
 /// TODO
 pub trait OffsetContainer<T>: Default + Extend<T> {
     /// Accepts a newly pushed element.
@@ -101,12 +114,55 @@ impl OffsetStride {
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default)]
 pub struct OffsetList {
-    /// Length of a prefix of zero elements.
-    pub zero_prefix: usize,
     /// Offsets that fit within a `u32`.
     pub smol: Vec<u32>,
     /// Offsets that either do not fit in a `u32`, or are inserted after some offset that did not fit.
     pub chonk: Vec<u64>,
+}
+
+impl Region for OffsetList {
+    type ReadItem<'a> = usize where Self: 'a;
+    type Index = usize;
+
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            smol: Vec::with_capacity(regions.clone().map(|r| r.smol.len()).sum()),
+            chonk: Vec::with_capacity(regions.clone().map(|r| r.chonk.len()).sum()),
+        }
+    }
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        if index < self.smol.len() {
+            self.smol[index].try_into().unwrap()
+        } else {
+            self.chonk[index - self.smol.len()].try_into().unwrap()
+        }
+    }
+
+    fn reserve_regions<'a, I>(&mut self, regions: I)
+    where
+        Self: 'a,
+        I: Iterator<Item = &'a Self> + Clone,
+    {
+        self.smol
+            .reserve(regions.clone().map(|r| r.smol.len()).sum());
+        self.chonk
+            .reserve(regions.clone().map(|r| r.chonk.len()).sum());
+    }
+
+    fn clear(&mut self) {
+        self.clear();
+    }
+}
+
+impl CopyOnto<OffsetList> for usize {
+    fn copy_onto(self, target: &mut OffsetList) -> usize {
+        target.push(self);
+        target.len() - 1
+    }
 }
 
 impl OffsetList {
@@ -114,16 +170,13 @@ impl OffsetList {
     // /// Allocate a new list with a specified capacity.
     // pub fn with_capacity(cap: usize) -> Self {
     //     Self {
-    //         zero_prefix: 0,
     //         smol: Vec::with_capacity(cap),
     //         chonk: Vec::new(),
     //     }
     // }
     /// Inserts the offset, as a `u32` if that is still on the table.
     pub fn push(&mut self, offset: usize) {
-        if self.smol.is_empty() && self.chonk.is_empty() && offset == 0 {
-            self.zero_prefix += 1;
-        } else if self.chonk.is_empty() {
+        if self.chonk.is_empty() {
             if let Ok(smol) = offset.try_into() {
                 self.smol.push(smol);
             } else {
@@ -133,21 +186,17 @@ impl OffsetList {
             self.chonk.push(offset.try_into().unwrap())
         }
     }
-    /// Like `std::ops::Index`, which we cannot implement as it must return a `&usize`.
-    pub fn index(&self, index: usize) -> usize {
-        if index < self.zero_prefix {
-            0
-        } else if index - self.zero_prefix < self.smol.len() {
-            self.smol[index - self.zero_prefix].try_into().unwrap()
-        } else {
-            self.chonk[index - self.zero_prefix - self.smol.len()]
-                .try_into()
-                .unwrap()
-        }
-    }
+    // /// Like `std::ops::Index`, which we cannot implement as it must return a `&usize`.
+    // pub fn index(&self, index: usize) -> usize {
+    //     if index < self.smol.len() {
+    //         self.smol[index].try_into().unwrap()
+    //     } else {
+    //         self.chonk[index - self.smol.len()].try_into().unwrap()
+    //     }
+    // }
     /// The number of offsets in the list.
     pub fn len(&self) -> usize {
-        self.zero_prefix + self.smol.len() + self.chonk.len()
+        self.smol.len() + self.chonk.len()
     }
 
     /// Returns `true` if this list contains no elements.
@@ -174,6 +223,49 @@ pub struct OffsetOptimized {
     spilled: OffsetList,
 }
 
+impl Region for OffsetOptimized {
+    type ReadItem<'a> = usize where Self: 'a;
+    type Index = usize;
+
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            strided: OffsetStride::default(),
+            spilled: OffsetList::merge_regions(regions.map(|r| &r.spilled)),
+        }
+    }
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        if index < self.strided.len() {
+            self.strided.index(index)
+        } else {
+            self.spilled.index(index - self.strided.len())
+        }
+    }
+
+    fn reserve_regions<'a, I>(&mut self, regions: I)
+    where
+        Self: 'a,
+        I: Iterator<Item = &'a Self> + Clone,
+    {
+        self.spilled.reserve_regions(regions.map(|r| &r.spilled));
+    }
+
+    fn clear(&mut self) {
+        self.strided = OffsetStride::default();
+        self.spilled.clear();
+    }
+}
+
+impl CopyOnto<OffsetOptimized> for usize {
+    fn copy_onto(self, target: &mut OffsetOptimized) -> usize {
+        target.push(self);
+        target.len() - 1
+    }
+}
+
 impl OffsetContainer<usize> for OffsetOptimized {
     fn push(&mut self, item: usize) {
         if !self.spilled.is_empty() {
@@ -195,8 +287,8 @@ impl OffsetContainer<usize> for OffsetOptimized {
     }
 
     fn clear(&mut self) {
-        self.spilled.clear();
         self.strided = OffsetStride::default();
+        self.spilled.clear();
     }
 
     fn len(&self) -> usize {

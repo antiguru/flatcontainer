@@ -10,3 +10,4 @@ pub mod slice;
 pub mod slice_copy;
 pub mod string;
 pub mod tuple;
+pub mod vec;
