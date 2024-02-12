@@ -44,6 +44,13 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
+    fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self::default()
+    }
+
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         index
@@ -64,44 +71,44 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     }
 }
 
+impl<T: Index> CopyOnto<MirrorRegion<Self>> for T {
+    #[inline(always)]
+    fn copy_onto(self, _target: &mut MirrorRegion<Self>) -> T {
+        self
+    }
+}
+
+impl<'a, T: Index> CopyOnto<MirrorRegion<T>> for &'a T {
+    #[inline(always)]
+    fn copy_onto(self, _target: &mut MirrorRegion<T>) -> T {
+        *self
+    }
+}
+
+impl<T: Index> ReserveItems<MirrorRegion<T>> for T {
+    #[inline(always)]
+    fn reserve_items<I>(_target: &mut MirrorRegion<T>, _items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        // No storage
+    }
+}
+
+impl<'a, T: Index> ReserveItems<MirrorRegion<T>> for &'a T {
+    #[inline(always)]
+    fn reserve_items<I>(_target: &mut MirrorRegion<T>, _items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        // No storage
+    }
+}
+
 macro_rules! implement_for {
     ($index_type:ty) => {
         impl Containerized for $index_type {
             type Region = MirrorRegion<Self>;
-        }
-
-        impl CopyOnto<MirrorRegion<Self>> for $index_type {
-            #[inline(always)]
-            fn copy_onto(self, _target: &mut MirrorRegion<Self>) -> $index_type {
-                self
-            }
-        }
-
-        impl<'a> CopyOnto<MirrorRegion<$index_type>> for &'a $index_type {
-            #[inline(always)]
-            fn copy_onto(self, _target: &mut MirrorRegion<$index_type>) -> $index_type {
-                *self
-            }
-        }
-
-        impl<'a> ReserveItems<MirrorRegion<$index_type>> for $index_type {
-            #[inline(always)]
-            fn reserve_items<I>(_target: &mut MirrorRegion<$index_type>, _items: I)
-            where
-                I: Iterator<Item = Self> + Clone,
-            {
-                // No storage
-            }
-        }
-
-        impl<'a> ReserveItems<MirrorRegion<$index_type>> for &'a $index_type {
-            #[inline(always)]
-            fn reserve_items<I>(_target: &mut MirrorRegion<$index_type>, _items: I)
-            where
-                I: Iterator<Item = Self> + Clone,
-            {
-                // No storage
-            }
         }
     };
 }

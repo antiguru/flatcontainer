@@ -35,6 +35,15 @@ impl<R: Region> Region for OptionRegion<R> {
     type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            inner: R::merge_regions(regions.map(|r| &r.inner)),
+        }
+    }
+
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         index.map(|t| self.inner.index(t))

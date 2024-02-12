@@ -31,6 +31,14 @@ macro_rules! tuple_flatcontainer {
 
                 type Index = ($($name::Index,)*);
 
+                fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+                where
+                    Self: 'a {
+                    Self {
+                        $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
+                    }
+                }
+
                 #[inline] fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
                     let ($($name,)*) = index;
                     (

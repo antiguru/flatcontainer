@@ -40,6 +40,16 @@ where
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            oks: T::merge_regions(regions.clone().map(|r| &r.oks)),
+            errs: E::merge_regions(regions.map(|r| &r.errs)),
+        }
+    }
+
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         match index {
