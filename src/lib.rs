@@ -502,11 +502,11 @@ mod tests {
 
     #[test]
     fn all_types() {
-        fn test_copy<T, C: Region + Clone>(t: T)
+        fn test_copy<T, R: Region + Clone>(t: T)
         where
-            T: CopyOnto<C>,
+            T: CopyOnto<R>,
             // Make sure that types are debug, even if we don't use this in the test.
-            for<'a> C::ReadItem<'a>: Debug,
+            for<'a> R::ReadItem<'a>: Debug,
         {
             let mut c = FlatStack::default();
             c.copy(t);
@@ -518,59 +518,59 @@ mod tests {
         test_copy::<_, StringRegion>(&"a".to_string());
         test_copy::<_, StringRegion>("a");
 
-        test_copy::<_, MirrorRegion<_>>(());
-        test_copy::<_, MirrorRegion<_>>(&());
-        test_copy::<_, MirrorRegion<_>>(true);
-        test_copy::<_, MirrorRegion<_>>(&true);
-        test_copy::<_, MirrorRegion<_>>(' ');
-        test_copy::<_, MirrorRegion<_>>(&' ');
-        test_copy::<_, MirrorRegion<_>>(0u8);
-        test_copy::<_, MirrorRegion<_>>(&0u8);
-        test_copy::<_, MirrorRegion<_>>(0u16);
-        test_copy::<_, MirrorRegion<_>>(&0u16);
-        test_copy::<_, MirrorRegion<_>>(0u32);
-        test_copy::<_, MirrorRegion<_>>(&0u32);
-        test_copy::<_, MirrorRegion<_>>(0u64);
-        test_copy::<_, MirrorRegion<_>>(&0u64);
-        test_copy::<_, MirrorRegion<_>>(0u128);
-        test_copy::<_, MirrorRegion<_>>(&0u128);
-        test_copy::<_, MirrorRegion<_>>(0usize);
-        test_copy::<_, MirrorRegion<_>>(&0usize);
-        test_copy::<_, MirrorRegion<_>>(0i8);
-        test_copy::<_, MirrorRegion<_>>(&0i8);
-        test_copy::<_, MirrorRegion<_>>(0i16);
-        test_copy::<_, MirrorRegion<_>>(&0i16);
-        test_copy::<_, MirrorRegion<_>>(0i32);
-        test_copy::<_, MirrorRegion<_>>(&0i32);
-        test_copy::<_, MirrorRegion<_>>(0i64);
-        test_copy::<_, MirrorRegion<_>>(&0i64);
-        test_copy::<_, MirrorRegion<_>>(0i128);
-        test_copy::<_, MirrorRegion<_>>(&0i128);
-        test_copy::<_, MirrorRegion<_>>(0isize);
-        test_copy::<_, MirrorRegion<_>>(&0isize);
-        test_copy::<_, MirrorRegion<_>>(0f32);
-        test_copy::<_, MirrorRegion<_>>(&0f32);
-        test_copy::<_, MirrorRegion<_>>(0f64);
-        test_copy::<_, MirrorRegion<_>>(&0f64);
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i8));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i8));
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i16));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i16));
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i32));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i32));
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i64));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i64));
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0i128));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0i128));
-        test_copy::<_, MirrorRegion<_>>(std::num::Wrapping(0isize));
-        test_copy::<_, MirrorRegion<_>>(&std::num::Wrapping(0isize));
+        test_copy::<_, MirrorRegion<()>>(());
+        test_copy::<_, MirrorRegion<()>>(&());
+        test_copy::<_, MirrorRegion<bool>>(true);
+        test_copy::<_, MirrorRegion<bool>>(&true);
+        test_copy::<_, MirrorRegion<char>>(' ');
+        test_copy::<_, MirrorRegion<char>>(&' ');
+        test_copy::<_, MirrorRegion<u8>>(0u8);
+        test_copy::<_, MirrorRegion<u8>>(&0u8);
+        test_copy::<_, MirrorRegion<u16>>(0u16);
+        test_copy::<_, MirrorRegion<u16>>(&0u16);
+        test_copy::<_, MirrorRegion<u32>>(0u32);
+        test_copy::<_, MirrorRegion<u32>>(&0u32);
+        test_copy::<_, MirrorRegion<u64>>(0u64);
+        test_copy::<_, MirrorRegion<u64>>(&0u64);
+        test_copy::<_, MirrorRegion<u128>>(0u128);
+        test_copy::<_, MirrorRegion<u128>>(&0u128);
+        test_copy::<_, MirrorRegion<usize>>(0usize);
+        test_copy::<_, MirrorRegion<usize>>(&0usize);
+        test_copy::<_, MirrorRegion<i8>>(0i8);
+        test_copy::<_, MirrorRegion<i8>>(&0i8);
+        test_copy::<_, MirrorRegion<i16>>(0i16);
+        test_copy::<_, MirrorRegion<i16>>(&0i16);
+        test_copy::<_, MirrorRegion<i32>>(0i32);
+        test_copy::<_, MirrorRegion<i32>>(&0i32);
+        test_copy::<_, MirrorRegion<i64>>(0i64);
+        test_copy::<_, MirrorRegion<i64>>(&0i64);
+        test_copy::<_, MirrorRegion<i128>>(0i128);
+        test_copy::<_, MirrorRegion<i128>>(&0i128);
+        test_copy::<_, MirrorRegion<isize>>(0isize);
+        test_copy::<_, MirrorRegion<isize>>(&0isize);
+        test_copy::<_, MirrorRegion<f32>>(0f32);
+        test_copy::<_, MirrorRegion<f32>>(&0f32);
+        test_copy::<_, MirrorRegion<f64>>(0f64);
+        test_copy::<_, MirrorRegion<f64>>(&0f64);
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(std::num::Wrapping(0i8));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(&std::num::Wrapping(0i8));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(std::num::Wrapping(0i16));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(&std::num::Wrapping(0i16));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(std::num::Wrapping(0i32));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(&std::num::Wrapping(0i32));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(std::num::Wrapping(0i64));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(&std::num::Wrapping(0i64));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(std::num::Wrapping(0i128));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(&std::num::Wrapping(0i128));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(std::num::Wrapping(0isize));
+        test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(&std::num::Wrapping(0isize));
 
-        test_copy::<_, ResultRegion<MirrorRegion<_>, MirrorRegion<_>>>(Result::<u8, u8>::Ok(0));
-        test_copy::<_, ResultRegion<MirrorRegion<_>, MirrorRegion<_>>>(&Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Ok(0));
 
-        test_copy::<_, SliceRegion<MirrorRegion<_>>>([0u8].as_slice());
-        test_copy::<_, SliceRegion<MirrorRegion<_>>>(vec![0u8]);
-        test_copy::<_, SliceRegion<MirrorRegion<_>>>(&vec![0u8]);
+        test_copy::<_, SliceRegion<MirrorRegion<u8>>>([0u8].as_slice());
+        test_copy::<_, SliceRegion<MirrorRegion<u8>>>(vec![0u8]);
+        test_copy::<_, SliceRegion<MirrorRegion<u8>>>(&vec![0u8]);
 
         test_copy::<_, SliceRegion<StringRegion>>(["a"].as_slice());
         test_copy::<_, SliceRegion<StringRegion>>(vec!["a"]);
