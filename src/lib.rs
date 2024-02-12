@@ -34,6 +34,7 @@ use std::fmt::{Debug, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod codec;
 pub mod impls;
 
 pub use impls::mirror::MirrorRegion;
