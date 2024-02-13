@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 pub mod codec;
 pub mod impls;
 
+pub use impls::columns::ColumnsRegion;
 pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;

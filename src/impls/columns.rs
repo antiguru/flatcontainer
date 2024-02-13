@@ -20,9 +20,33 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 ///
 /// Copy a table-like structure:
 /// ```
+/// # use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
+/// # use flatcontainer::{ColumnsRegion, CopyOnto, Region, StringRegion};
+/// let data = [
+///     vec![],
+///     vec!["1"],
+///     vec!["2", "3"],
+///     vec!["4", "5", "6"],
+///     vec!["7", "8"],
+///     vec!["9"],
+///     vec![],
+/// ];
+///
+/// let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+///
+/// let mut indices = Vec::with_capacity(data.len());
+///
+/// for row in &data {
+///     let index = row.copy_onto(&mut r);
+///     indices.push(index);
+/// }
+///
+/// for (&index, row) in indices.iter().zip(&data) {
+///     assert!(row.iter().copied().eq(r.index(index).iter()));
+/// }
 /// ```
 #[derive(Debug)]
-struct ColumnsRegion<R, Idx>
+pub struct ColumnsRegion<R, Idx>
 where
     R: Region<Index = Idx>,
     Idx: Index,
