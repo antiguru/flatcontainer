@@ -38,6 +38,7 @@ where
     E: Region,
 {
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
+    type ReadItemMut<'a> = Result<T::ReadItemMut<'a>, E::ReadItemMut<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -55,6 +56,13 @@ where
         match index {
             Ok(index) => Ok(self.oks.index(index)),
             Err(index) => Err(self.errs.index(index)),
+        }
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        match index {
+            Ok(index) => Ok(self.oks.index_mut(index)),
+            Err(index) => Err(self.errs.index_mut(index)),
         }
     }
 

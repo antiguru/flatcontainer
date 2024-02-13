@@ -33,6 +33,7 @@ pub struct OptionRegion<R> {
 
 impl<R: Region> Region for OptionRegion<R> {
     type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
+    type ReadItemMut<'a> = Option<R::ReadItemMut<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -47,6 +48,10 @@ impl<R: Region> Region for OptionRegion<R> {
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         index.map(|t| self.inner.index(t))
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        index.map(|t| self.inner.index_mut(t))
     }
 
     #[inline]

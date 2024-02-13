@@ -71,6 +71,11 @@ pub trait Region: Default {
     where
         Self: 'a;
 
+    /// The type of the data that one gets out of the container.
+    type ReadItemMut<'a>: CopyOnto<Self>
+    where
+        Self: 'a;
+
     /// The type to index into the container. Should be treated
     /// as an opaque type, even if known.
     type Index: Index;
@@ -83,6 +88,10 @@ pub trait Region: Default {
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
+
+    /// Index into the container. The index must be obtained by
+    /// pushing data into the container.
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_>;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -381,6 +390,7 @@ mod tests {
 
     impl Region for PersonRegion {
         type ReadItem<'a> = PersonRef<'a> where Self: 'a;
+        type ReadItemMut<'a>  = PersonRef<'a>where Self: 'a;
         type Index = (
             <<String as Containerized>::Region as Region>::Index,
             <<u16 as Containerized>::Region as Region>::Index,
@@ -410,6 +420,10 @@ mod tests {
                 age: self.age_container.index(age),
                 hobbies: self.hobbies.index(hobbies),
             }
+        }
+
+        fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+            self.index(index)
         }
 
         fn reserve_regions<'a, I>(&mut self, regions: I)

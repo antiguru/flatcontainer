@@ -26,6 +26,11 @@ where
     for<'a, 'b> R::ReadItem<'a>: PartialEq<R::ReadItem<'b>>,
 {
     type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
+
+    // Important: We do not permit mutable access to our contents because multiple
+    // indices can reference the same data.
+    type ReadItemMut<'a> = R::ReadItem<'a> where Self: 'a;
+
     type Index = R::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -40,6 +45,10 @@ where
 
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner.index(index)
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        self.index(index)
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -109,9 +118,9 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
 impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
     for ConsecutiveOffsetPairs<R, O>
 {
-    type ReadItem<'a> = R::ReadItem<'a>
-    where
-        Self: 'a;
+    type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
+
+    type ReadItemMut<'a> = R::ReadItemMut<'a> where Self: 'a;
 
     type Index = usize;
 
@@ -131,6 +140,11 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner
             .index((self.offsets.index(index), self.offsets.index(index + 1)))
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        self.inner
+            .index_mut((self.offsets.index(index), self.offsets.index(index + 1)))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)

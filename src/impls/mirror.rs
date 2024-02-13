@@ -42,6 +42,7 @@ impl<T> Debug for MirrorRegion<T> {
 
 impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
+    type ReadItemMut<'a> = T where Self: 'a;
     type Index = T;
 
     fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -53,6 +54,10 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
 
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        index
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
         index
     }
 

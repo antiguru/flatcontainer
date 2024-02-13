@@ -32,6 +32,7 @@ pub struct StringRegion {
 
 impl Region for StringRegion {
     type ReadItem<'a> = &'a str where Self: 'a ;
+    type ReadItemMut<'a> = &'a mut str where Self: 'a;
     type Index = <CopyRegion<u8> as Region>::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -46,6 +47,10 @@ impl Region for StringRegion {
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        unsafe { std::str::from_utf8_unchecked_mut(self.inner.index_mut(index)) }
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -97,6 +102,13 @@ impl CopyOnto<StringRegion> for &str {
     #[inline]
     fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
+    }
+}
+
+impl CopyOnto<StringRegion> for &mut str {
+    #[inline]
+    fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
+        <&str as CopyOnto<StringRegion>>::copy_onto(self, target)
     }
 }
 

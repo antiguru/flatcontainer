@@ -30,6 +30,7 @@ pub struct CopyRegion<T: Copy> {
 
 impl<T: Copy> Region for CopyRegion<T> {
     type ReadItem<'a> = &'a [T] where Self: 'a;
+    type ReadItemMut<'a> = &'a mut [T] where Self: 'a;
     type Index = (usize, usize);
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -44,6 +45,10 @@ impl<T: Copy> Region for CopyRegion<T> {
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
         &self.slices[start..end]
+    }
+
+    fn index_mut(&mut self, (start, end): Self::Index) -> Self::ReadItemMut<'_> {
+        &mut self.slices[start..end]
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -86,6 +91,25 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
         I: Iterator<Item = Self> + Clone,
     {
         target.slices.reserve(items.map(|i| i.len()).sum());
+    }
+}
+
+impl<T> CopyOnto<CopyRegion<T>> for &mut [T]
+where
+    T: Copy,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        (&*self).copy_onto(target)
+    }
+}
+
+impl<T: Copy> ReserveItems<CopyRegion<T>> for &mut [T] {
+    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        ReserveItems::reserve_items(target, items.map(|r| &*r));
     }
 }
 

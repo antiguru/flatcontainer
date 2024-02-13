@@ -28,6 +28,7 @@ macro_rules! tuple_flatcontainer {
                $(<$name as Region>::Index: crate::Index),*
             {
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
+                type ReadItemMut<'a> = ($($name::ReadItemMut<'a>,)*) where Self: 'a;
 
                 type Index = ($($name::Index,)*);
 
@@ -43,6 +44,13 @@ macro_rules! tuple_flatcontainer {
                     let ($($name,)*) = index;
                     (
                         $(self.[<container $name>].index($name),)*
+                    )
+                }
+
+                #[inline] fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+                    let ($($name,)*) = index;
+                    (
+                        $(self.[<container $name>].index_mut($name),)*
                     )
                 }
 

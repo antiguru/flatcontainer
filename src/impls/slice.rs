@@ -61,6 +61,7 @@ pub struct SliceRegion<C: Region, O: OffsetContainer<C::Index> = Vec<<C as Regio
 
 impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
     type ReadItem<'a> = ReadSlice<'a, C, O> where Self: 'a;
+    type ReadItemMut<'a> = ReadSlice<'a, C, O> where Self: 'a;
     type Index = (usize, usize);
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -80,6 +81,10 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
             start,
             end,
         }
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        self.index(index)
     }
 
     #[inline]

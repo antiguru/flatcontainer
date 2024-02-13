@@ -40,6 +40,7 @@ where
     Idx: Index,
 {
     type ReadItem<'a> = ReadColumns<'a, R, Idx> where Self: 'a;
+    type ReadItemMut<'a> = ReadColumnsMut<'a, R, Idx> where Self: 'a;
     type Index = usize;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -64,6 +65,13 @@ where
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         ReadColumns {
             columns: &self.inner,
+            index: self.indices.index(index),
+        }
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        ReadColumnsMut {
+            columns: &mut self.inner,
             index: self.indices.index(index),
         }
     }
@@ -101,6 +109,72 @@ where
             indices: Default::default(),
             inner: Vec::default(),
         }
+    }
+}
+
+/// Read the values of a row.
+pub struct ReadColumnsMut<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
+    /// Storage for columns.
+    columns: &'a mut [R],
+    /// Indices to retrieve values from columns.
+    index: &'a [Idx],
+}
+
+impl<'a, R, Idx> ReadColumnsMut<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
+    /// Iterate the individual values of a row.
+    pub fn iter(&'a mut self) -> impl Iterator<Item = R::ReadItemMut<'a>> {
+        self.index
+            .iter()
+            .zip(self.columns.iter_mut())
+            .map(|(idx, r)| r.index_mut(*idx))
+    }
+
+    /// Get the element at `offset`.
+    pub fn get(&'a mut self, offset: usize) -> R::ReadItemMut<'a> {
+        self.columns[offset].index_mut(self.index[offset])
+    }
+
+    /// Returns the length of this row.
+    pub fn len(&self) -> usize {
+        self.index.len()
+    }
+
+    /// Returns `true` if this row is empty.
+    pub fn is_empty(&self) -> bool {
+        self.index.is_empty()
+    }
+}
+
+impl<'a, R, Idx> CopyOnto<ColumnsRegion<R, Idx>> for ReadColumnsMut<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
+    fn copy_onto(
+        self,
+        target: &mut ColumnsRegion<R, Idx>,
+    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+        // Ensure all required regions exist.
+        while target.inner.len() < self.len() {
+            target.inner.push(R::default());
+        }
+
+        let iter = self
+            .index
+            .iter()
+            .zip(self.columns.iter_mut())
+            .map(|(idx, r)| r.index_mut(*idx))
+            .zip(&mut target.inner)
+            .map(|(value, region)| value.copy_onto(region));
+        CopyIter(iter).copy_onto(&mut target.indices)
     }
 }
 

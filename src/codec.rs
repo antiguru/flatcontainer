@@ -83,9 +83,8 @@ where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
     for<'a> &'a [u8]: CopyOnto<R>,
 {
-    type ReadItem<'a> = &'a [u8]
-    where
-        Self: 'a;
+    type ReadItem<'a> = &'a [u8] where Self: 'a;
+    type ReadItemMut<'a> = Self::ReadItem<'a> where Self: 'a;
 
     type Index = R::Index;
 
@@ -104,6 +103,10 @@ where
 
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.codec.decode(self.inner.index(index))
+    }
+
+    fn index_mut(&mut self, index: Self::Index) -> Self::ReadItemMut<'_> {
+        self.index(index)
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
