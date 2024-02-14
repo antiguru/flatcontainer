@@ -152,6 +152,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
 impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R>>
     CopyOnto<ConsecutiveOffsetPairs<R, O>> for T
 {
+    #[inline]
     fn copy_onto(
         self,
         target: &mut ConsecutiveOffsetPairs<R, O>,
