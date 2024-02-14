@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CopyOnto, Region, ReserveItems};
+use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 
 /// A container for [`Copy`] types.
 ///
@@ -107,9 +107,6 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
         ReserveItems::reserve_items(target, items.map(Vec::as_slice))
     }
 }
-
-/// A type to wrap iterators.
-pub struct CopyIter<I>(pub I);
 
 impl<T, I: IntoIterator<Item = T>> CopyOnto<CopyRegion<T>> for CopyIter<I>
 where

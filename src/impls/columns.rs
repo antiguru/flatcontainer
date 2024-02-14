@@ -4,7 +4,7 @@ use std::fmt::Debug;
 
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
-use crate::impls::slice_copy::CopyIter;
+use crate::CopyIter;
 use crate::{CopyOnto, CopyRegion, Index, Region};
 
 /// A region that can store a variable number of elements per row.
@@ -129,7 +129,6 @@ where
 }
 
 /// Read the values of a row.
-#[derive(Copy)]
 pub struct ReadColumns<'a, R, Idx>
 where
     R: Region<Index = Idx>,
@@ -147,11 +146,15 @@ where
     Idx: Index,
 {
     fn clone(&self) -> Self {
-        Self {
-            columns: self.columns,
-            index: self.index,
-        }
+        *self
     }
+}
+
+impl<'a, R, Idx> Copy for ReadColumns<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
 }
 
 impl<'a, R, Idx> Debug for ReadColumns<'a, R, Idx>
@@ -161,7 +164,7 @@ where
     Idx: Index,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
+        f.debug_list().entries(self).finish()
     }
 }
 
@@ -171,11 +174,8 @@ where
     Idx: Index,
 {
     /// Iterate the individual values of a row.
-    pub fn iter(&self) -> impl Iterator<Item = R::ReadItem<'a>> {
-        self.index
-            .iter()
-            .zip(self.columns)
-            .map(|(idx, r)| r.index(*idx))
+    pub fn iter(&'a self) -> ReadColumnsIter<'a, R, Idx> {
+        self.into_iter()
     }
 
     /// Get the element at `offset`.
@@ -191,6 +191,38 @@ where
     /// Returns `true` if this row is empty.
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
+    }
+}
+
+impl<'a, R, Idx> IntoIterator for &ReadColumns<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
+    type Item = R::ReadItem<'a>;
+    type IntoIter = ReadColumnsIter<'a, R, Idx>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ReadColumnsIter {
+            iter: self.index.iter().zip(self.columns.iter()),
+        }
+    }
+}
+
+/// An iterator over the elements of a row.
+pub struct ReadColumnsIter<'a, R, Idx> {
+    iter: std::iter::Zip<std::slice::Iter<'a, Idx>, std::slice::Iter<'a, R>>,
+}
+
+impl<'a, R, Idx> Iterator for ReadColumnsIter<'a, R, Idx>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+{
+    type Item = R::ReadItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|(&i, r)| r.index(i))
     }
 }
 
@@ -285,10 +317,34 @@ where
     }
 }
 
+impl<R, Idx, T, I> CopyOnto<ColumnsRegion<R, Idx>> for CopyIter<I>
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+    T: CopyOnto<R>,
+    I: IntoIterator<Item = T>,
+{
+    #[inline]
+    fn copy_onto(
+        self,
+        target: &mut ColumnsRegion<R, Idx>,
+    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+        let iter = self.0.into_iter().enumerate().map(|(index, value)| {
+            // Ensure all required regions exist.
+            if target.inner.len() <= index {
+                target.inner.push(R::default());
+            }
+            value.copy_onto(&mut target.inner[index])
+        });
+        CopyIter(iter).copy_onto(&mut target.indices)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::impls::columns::ColumnsRegion;
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+    use crate::CopyIter;
     use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
 
     #[test]
@@ -384,6 +440,34 @@ mod tests {
 
         for row in &data {
             let index = row.copy_onto(&mut r);
+            indices.push(index);
+        }
+
+        for (&index, row) in indices.iter().zip(&data) {
+            assert!(row.iter().copied().eq(r.index(index).iter()));
+        }
+
+        println!("{r:?}");
+    }
+
+    #[test]
+    fn test_ragged_str_iter() {
+        let data = [
+            vec![],
+            vec!["1"],
+            vec!["2", "3"],
+            vec!["4", "5", "6"],
+            vec!["7", "8"],
+            vec!["9"],
+            vec![],
+        ];
+
+        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+
+        let mut indices = Vec::with_capacity(data.len());
+
+        for row in &data {
+            let index = CopyIter(row.iter()).copy_onto(&mut r);
             indices.push(index);
         }
 

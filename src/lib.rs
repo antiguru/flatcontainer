@@ -303,6 +303,13 @@ impl<R: Region> Clone for FlatStack<R> {
     }
 }
 
+/// A type to wrap and copy iterators onto regions.
+///
+/// This only exists to avoid blanket implementations that might conflict with more specific
+/// implementations offered by some regions.
+#[repr(transparent)]
+pub struct CopyIter<I>(pub I);
+
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
