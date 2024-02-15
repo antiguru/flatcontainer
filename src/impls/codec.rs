@@ -75,7 +75,6 @@ fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
 pub struct CodecRegion<C: Codec, R = CopyRegion<u8>> {
     inner: R,
     codec: C,
-    staging: Vec<u8>,
 }
 
 impl<C: Codec, R> Region for CodecRegion<C, R>
@@ -98,7 +97,6 @@ where
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
             codec,
-            staging: vec![],
         }
     }
 
@@ -126,9 +124,7 @@ where
     for<'a> &'a [u8]: CopyOnto<R>,
 {
     fn copy_onto(self, target: &mut CodecRegion<C, R>) -> <CodecRegion<C, R> as Region>::Index {
-        target.staging.clear();
-        target.codec.encode(self, &mut target.staging);
-        target.staging.as_slice().copy_onto(&mut target.inner)
+        target.codec.encode(self, &mut target.inner)
     }
 }
 
@@ -137,7 +133,9 @@ pub trait Codec: Default + 'static {
     /// Decodes an input byte slice into a sequence of byte slices.
     fn decode<'a>(&'a self, bytes: &'a [u8]) -> &'a [u8];
     /// Encodes a sequence of byte slices into an output byte slice.
-    fn encode(&mut self, bytes: &[u8], output: &mut Vec<u8>);
+    fn encode<R: Region>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+    where
+        for<'a> &'a [u8]: CopyOnto<R>;
     /// Constructs a new instance of `Self` from accumulated statistics.
     /// These statistics should cover the data the output expects to see.
     fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self;
@@ -147,6 +145,7 @@ pub trait Codec: Default + 'static {
 
 mod dictionary {
 
+    use crate::{CopyOnto, Region};
     use std::collections::BTreeMap;
 
     pub use super::{BytesMap, Codec, MisraGries};
@@ -174,23 +173,26 @@ mod dictionary {
         /// Encode a sequence of byte slices.
         ///
         /// Encoding also records statistics about the structure of the input.
-        fn encode(&mut self, bytes: &[u8], output: &mut Vec<u8>) {
-            let pre_len = output.len();
-
+        fn encode<R: Region>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+        where
+            for<'a> &'a [u8]: CopyOnto<R>,
+        {
             self.total += bytes.len();
             // If we have an index referencing `bytes`, use the index key.
-            if let Some(b) = self.encode.get(bytes) {
-                output.push(*b);
+            let index = if let Some(b) = self.encode.get(bytes) {
+                self.bytes += 1;
+                [*b].as_slice().copy_onto(output)
             } else {
-                output.extend_from_slice(bytes);
-            }
+                self.bytes += bytes.len();
+                bytes.copy_onto(output)
+            };
             // Stats stuff.
             self.stats.0.insert(bytes.to_owned());
             let tag = bytes[0];
             let tag_idx: usize = (tag % 4).into();
             self.stats.1[tag_idx] |= 1 << (tag >> 2);
 
-            self.bytes += output.len() - pre_len;
+            index
         }
 
         /// Construct a new encoder from supplied statistics.
@@ -301,8 +303,7 @@ mod misra_gries {
     /// Maintains a summary of "heavy hitters" in a presented collection of items.
     #[derive(Clone, Debug)]
     pub struct MisraGries<T> {
-        /// TODO
-        pub inner: Vec<(T, usize)>,
+        inner: Vec<(T, usize)>,
     }
 
     impl<T> Default for MisraGries<T> {
