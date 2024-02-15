@@ -34,7 +34,6 @@ use std::fmt::{Debug, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-pub mod codec;
 pub mod impls;
 
 pub use impls::columns::ColumnsRegion;
@@ -331,7 +330,7 @@ mod tests {
 
     #[test]
     fn test_slice_string_onto() {
-        let mut c = StringRegion::default();
+        let mut c = <StringRegion>::default();
         let index = "abc".to_string().copy_onto(&mut c);
         assert_eq!("abc", c.index(index));
         let index = "def".copy_onto(&mut c);
@@ -349,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_vec() {
-        let mut c = SliceRegion::<MirrorRegion<_>>::default();
+        let mut c = <SliceRegion<MirrorRegion<_>>>::default();
         let slice = &[1u8, 2, 3];
         let idx = slice.copy_onto(&mut c);
         assert!(slice.iter().copied().eq(c.index(idx)));
@@ -357,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_vec_onto() {
-        let mut c: SliceRegion<MirrorRegion<u8>> = SliceRegion::default();
+        let mut c = <SliceRegion<MirrorRegion<u8>>>::default();
         let slice = &[1u8, 2, 3][..];
         let idx = slice.copy_onto(&mut c);
         assert!(slice.iter().copied().eq(c.index(idx)));
@@ -504,7 +503,7 @@ mod tests {
     #[test]
     fn test_result() {
         let r: Result<_, u16> = Ok("abc");
-        let mut c = ResultRegion::<StringRegion, MirrorRegion<_>>::default();
+        let mut c = <ResultRegion<StringRegion, MirrorRegion<_>>>::default();
         let idx = copy(&mut c, r);
         assert_eq!(r, c.index(idx));
     }

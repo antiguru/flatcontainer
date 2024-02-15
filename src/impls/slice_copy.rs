@@ -11,7 +11,7 @@ use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 ///
 /// ```
 /// use flatcontainer::{CopyOnto, CopyRegion, Region};
-/// let mut r = CopyRegion::<u8>::default();
+/// let mut r = <CopyRegion<_>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
 /// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";

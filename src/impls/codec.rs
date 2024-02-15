@@ -12,7 +12,7 @@ pub use dictionary::DictionaryCodec;
 /// This method will sort `vec` and then consolidate runs of more than one entry with
 /// identical first elements by accumulating the second elements of the pairs. Should the final
 /// accumulation be zero, the element is discarded.
-pub fn consolidate<T: Ord>(vec: &mut Vec<(T, usize)>) {
+fn consolidate<T: Ord>(vec: &mut Vec<(T, usize)>) {
     consolidate_from(vec, 0);
 }
 
@@ -21,13 +21,13 @@ pub fn consolidate<T: Ord>(vec: &mut Vec<(T, usize)>) {
 /// This method will sort `vec[offset..]` and then consolidate runs of more than one entry with
 /// identical first elements by accumulating the second elements of the pairs. Should the final
 /// accumulation be zero, the element is discarded.
-pub fn consolidate_from<T: Ord>(vec: &mut Vec<(T, usize)>, offset: usize) {
+fn consolidate_from<T: Ord>(vec: &mut Vec<(T, usize)>, offset: usize) {
     let length = consolidate_slice(&mut vec[offset..]);
     vec.truncate(offset + length);
 }
 
 /// Sorts and consolidates a slice, returning the valid prefix length.
-pub fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
+fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
     // We could do an insertion-sort like initial scan which builds up sorted, consolidated runs.
     // In a world where there are not many results, we may never even need to call in to merge sort.
     slice.sort_by(|x, y| x.0.cmp(&y.0));

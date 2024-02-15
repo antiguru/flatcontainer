@@ -20,7 +20,7 @@ use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
 /// For [`MirrorRegion`]s, we can index with a copy type:
 /// ```
 /// # use flatcontainer::{MirrorRegion, Region};
-/// let r = MirrorRegion::<u8>::default();
+/// let r = <MirrorRegion<u8>>::default();
 /// let output: u8 = r.index(42);
 /// assert_eq!(output, 42);
 /// ```
