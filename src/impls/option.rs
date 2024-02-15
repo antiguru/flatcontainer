@@ -63,6 +63,10 @@ impl<R: Region> Region for OptionRegion<R> {
     fn clear(&mut self) {
         self.inner.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
 }
 
 impl<T, TR> CopyOnto<OptionRegion<TR>> for Option<T>

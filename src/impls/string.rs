@@ -71,6 +71,10 @@ where
     fn clear(&mut self) {
         self.inner.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
 }
 
 impl Containerized for String {

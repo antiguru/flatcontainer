@@ -69,6 +69,10 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     fn clear(&mut self) {
         // No storage
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
+        // No storage
+    }
 }
 
 impl<T: Index> CopyOnto<MirrorRegion<Self>> for T {

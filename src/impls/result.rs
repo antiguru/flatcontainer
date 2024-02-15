@@ -73,6 +73,11 @@ where
         self.oks.clear();
         self.errs.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.oks.heap_size(&mut callback);
+        self.errs.heap_size(callback);
+    }
 }
 
 impl<T, TC, E, EC> CopyOnto<ResultRegion<TC, EC>> for Result<T, E>

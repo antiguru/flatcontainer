@@ -22,6 +22,9 @@ pub trait OffsetContainer<T>: Default + Extend<T> {
 
     /// Reserve space for `additional` elements.
     fn reserve(&mut self, additional: usize);
+
+    /// Heap size, size - capacity
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 }
 
 /// A container for offsets that can represent strides of offsets.
@@ -174,6 +177,11 @@ impl OffsetList {
         self.smol.clear();
         self.chonk.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.smol.heap_size(&mut callback);
+        self.chonk.heap_size(callback);
+    }
 }
 
 /// An offset container implementation that first tries to recognize strides, and then spilles into
@@ -218,6 +226,10 @@ impl OffsetContainer<usize> for OffsetOptimized {
             self.spilled.reserve(additional);
         }
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.spilled.heap_size(callback);
+    }
 }
 
 impl Extend<usize> for OffsetOptimized {
@@ -252,6 +264,11 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
     #[inline]
     fn reserve(&mut self, additional: usize) {
         self.reserve(additional)
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        let size_of_t = std::mem::size_of::<T>();
+        callback(self.len() * size_of_t, self.capacity() * size_of_t);
     }
 }
 

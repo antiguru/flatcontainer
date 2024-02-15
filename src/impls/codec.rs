@@ -116,6 +116,11 @@ where
     fn clear(&mut self) {
         self.codec = Default::default();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.inner.heap_size(&mut callback);
+        self.codec.heap_size(callback);
+    }
 }
 
 impl<C: Codec, R> CopyOnto<CodecRegion<C, R>> for &[u8]
@@ -141,6 +146,9 @@ pub trait Codec: Default + 'static {
     fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self;
     /// Diagnostic information about the state of the codec.
     fn report(&self) {}
+
+    /// Heap size, size - capacity
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 }
 
 mod dictionary {
@@ -251,6 +259,10 @@ mod dictionary {
                 self.total / (self.bytes + bytes),
             )
             // }
+        }
+
+        fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
+            // Lazy
         }
     }
 }

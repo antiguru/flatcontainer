@@ -92,6 +92,9 @@ pub trait Region: Default {
 
     /// Remove all elements from this region, but retain allocations if possible.
     fn clear(&mut self);
+
+    /// Heap size, size - capacity
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 }
 
 /// A trait to let types express a default container type.
@@ -237,6 +240,13 @@ impl<R: Region> FlatStack<R> {
     /// Iterate the items in this stack.
     pub fn iter(&self) -> Iter<'_, R> {
         self.into_iter()
+    }
+
+    /// Heap size, size - capacity
+    pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.region.heap_size(&mut callback);
+        use crate::impls::offsets::OffsetContainer;
+        self.indices.heap_size(callback);
     }
 }
 
@@ -436,6 +446,12 @@ mod tests {
             self.name_container.clear();
             self.age_container.clear();
             self.hobbies.clear();
+        }
+
+        fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+            self.name_container.heap_size(&mut callback);
+            self.age_container.heap_size(&mut callback);
+            self.hobbies.heap_size(callback);
         }
     }
 

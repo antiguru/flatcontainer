@@ -65,6 +65,10 @@ where
         self.inner.clear();
         self.last_index = None;
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
 }
 
 impl<R: Region, T: CopyOnto<R>> CopyOnto<CollapseSequence<R>> for T
@@ -169,6 +173,11 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
         self.inner.clear();
         self.offsets.clear();
         self.offsets.push(0);
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.offsets.heap_size(&mut callback);
+        self.inner.heap_size(callback);
     }
 }
 

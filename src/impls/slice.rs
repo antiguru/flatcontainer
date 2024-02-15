@@ -98,6 +98,11 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
         self.slices.clear();
         self.inner.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.slices.heap_size(&mut callback);
+        self.inner.heap_size(callback);
+    }
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {

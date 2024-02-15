@@ -113,6 +113,13 @@ where
         }
         self.indices.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        for inner in &self.inner {
+            inner.heap_size(&mut callback);
+        }
+        self.indices.heap_size(callback);
+    }
 }
 
 impl<R, Idx> Default for ColumnsRegion<R, Idx>

@@ -8,8 +8,8 @@ use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs
 use flatcontainer::impls::offsets::OffsetOptimized;
 use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
-    Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region, ReserveItems,
-    SliceRegion, StringRegion,
+    ColumnsRegion, Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region,
+    ReserveItems, SliceRegion, StringRegion,
 };
 use test::Bencher;
 
@@ -109,6 +109,25 @@ fn vec_u_s_copy_region(bencher: &mut Bencher) {
 fn vec_u_vn_s_copy_region(bencher: &mut Bencher) {
     _bench_copy_region::<
         SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, CopyRegion<_>, StringRegion>>>,
+        _,
+    >(
+        bencher,
+        vec![vec![(0u64, vec![(); 1 << 40], "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+#[bench]
+fn vec_u_vn_s_copy_region_column(bencher: &mut Bencher) {
+    _bench_copy_region::<
+        SliceRegion<
+            ColumnsRegion<
+                TupleABCRegion<
+                    MirrorRegion<_>,
+                    CollapseSequence<CopyRegion<_>>,
+                    CollapseSequence<StringRegion>,
+                >,
+                _,
+            >,
+        >,
         _,
     >(
         bencher,
@@ -258,6 +277,12 @@ where
             arena.copy(&record);
         }
     });
+    let (mut siz, mut cap) = (0, 0);
+    arena.heap_size(|this_siz, this_cap| {
+        siz += this_siz;
+        cap += this_cap
+    });
+    println!("{siz} {cap}");
 }
 
 fn _bench_copy_region<R: Region, T>(bencher: &mut Bencher, record: T)
@@ -273,6 +298,12 @@ where
             arena.copy(&record);
         }
     });
+    let (mut siz, mut cap) = (0, 0);
+    arena.heap_size(|this_siz, this_cap| {
+        siz += this_siz;
+        cap += this_cap
+    });
+    println!("{siz} {cap}");
 }
 
 fn _bench_clone<T: Containerized + Eq + Clone>(bencher: &mut Bencher, record: T) {
