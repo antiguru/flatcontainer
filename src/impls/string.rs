@@ -8,12 +8,15 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
+/// Delegates to a region `R` to store `u8` slices. By default, it uses a [`CopyRegion`], but a
+/// different region can be provided, as long as it absorbs and reads items as `&[u8]`.
+///
 /// # Examples
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, Region, StringRegion};
-/// let mut r = StringRegion::default();
+/// use flatcontainer::{Containerized, CopyOnto, CopyRegion, Region, StringRegion};
+/// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
 /// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";
@@ -26,20 +29,28 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 /// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StringRegion {
-    inner: CopyRegion<u8>,
+pub struct StringRegion<R = CopyRegion<u8>>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
+    inner: R,
 }
 
-impl Region for StringRegion {
+impl<R> Region for StringRegion<R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
     type ReadItem<'a> = &'a str where Self: 'a ;
-    type Index = <CopyRegion<u8> as Region>::Index;
+    type Index = R::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self {
-            inner: CopyRegion::merge_regions(regions.map(|r| &r.inner)),
+            inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
     }
 
@@ -60,6 +71,10 @@ impl Region for StringRegion {
     fn clear(&mut self) {
         self.inner.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
 }
 
 impl Containerized for String {
@@ -70,22 +85,34 @@ impl<'a> Containerized for &'a str {
     type Region = StringRegion;
 }
 
-impl CopyOnto<StringRegion> for String {
+impl<R> CopyOnto<StringRegion<R>> for String
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
         self.as_str().copy_onto(target)
     }
 }
 
-impl CopyOnto<StringRegion> for &String {
+impl<R> CopyOnto<StringRegion<R>> for &String
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
         self.as_str().copy_onto(target)
     }
 }
 
-impl ReserveItems<StringRegion> for &String {
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
+impl<R> ReserveItems<StringRegion<R>> for &String
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+{
+    fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -93,22 +120,34 @@ impl ReserveItems<StringRegion> for &String {
     }
 }
 
-impl CopyOnto<StringRegion> for &str {
+impl<R> CopyOnto<StringRegion<R>> for &str
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
     }
 }
 
-impl CopyOnto<StringRegion> for &&str {
+impl<R> CopyOnto<StringRegion<R>> for &&str
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R>,
+{
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion) -> <StringRegion as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
     }
 }
 
-impl ReserveItems<StringRegion> for &str {
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
+impl<R> ReserveItems<StringRegion<R>> for &str
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+{
+    fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -116,11 +155,27 @@ impl ReserveItems<StringRegion> for &str {
     }
 }
 
-impl ReserveItems<StringRegion> for &&str {
-    fn reserve_items<I>(target: &mut StringRegion, items: I)
+impl<R> ReserveItems<StringRegion<R>> for &&str
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+{
+    fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
         ReserveItems::reserve_items(&mut target.inner, items.map(|s| s.as_bytes()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CopyOnto, Region, StringRegion};
+
+    #[test]
+    fn test_inner() {
+        let mut r = <StringRegion>::default();
+        let index = "abc".copy_onto(&mut r);
+        assert_eq!(r.index(index), "abc");
     }
 }

@@ -33,7 +33,7 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 /// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
 /// ```
 /// use flatcontainer::{Containerized, CopyOnto, Region, SliceRegion};
-/// let mut r = SliceRegion::<<String as Containerized>::Region>::default();
+/// let mut r = <SliceRegion<<String as Containerized>::Region>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog"
 ///     .split(" ")
@@ -97,6 +97,11 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
     fn clear(&mut self) {
         self.slices.clear();
         self.inner.clear();
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.slices.heap_size(&mut callback);
+        self.inner.heap_size(callback);
     }
 }
 

@@ -17,7 +17,7 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 /// ```
 /// use flatcontainer::{Containerized, CopyOnto, Region, ResultRegion};
 /// let mut r =
-///     ResultRegion::<<() as Containerized>::Region, <String as Containerized>::Region>::default();
+///     <ResultRegion<<() as Containerized>::Region, <String as Containerized>::Region>>::default();
 ///
 /// let ok_index = Result::<(), String>::Ok(()).copy_onto(&mut r);
 /// let err_index = Result::<(), String>::Err("Error".to_string()).copy_onto(&mut r);
@@ -72,6 +72,11 @@ where
     fn clear(&mut self) {
         self.oks.clear();
         self.errs.clear();
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.oks.heap_size(&mut callback);
+        self.errs.heap_size(callback);
     }
 }
 

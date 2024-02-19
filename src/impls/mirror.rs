@@ -20,7 +20,7 @@ use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
 /// For [`MirrorRegion`]s, we can index with a copy type:
 /// ```
 /// # use flatcontainer::{MirrorRegion, Region};
-/// let r = MirrorRegion::<u8>::default();
+/// let r = <MirrorRegion<u8>>::default();
 /// let output: u8 = r.index(42);
 /// assert_eq!(output, 42);
 /// ```
@@ -67,6 +67,10 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
 
     #[inline(always)]
     fn clear(&mut self) {
+        // No storage
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
         // No storage
     }
 }

@@ -1,5 +1,6 @@
 //! Various region implementations.
 
+pub mod codec;
 pub mod columns;
 pub mod deduplicate;
 pub mod mirror;

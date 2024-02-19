@@ -32,7 +32,7 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 ///     vec![],
 /// ];
 ///
-/// let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+/// let mut r = <ColumnsRegion<ConsecutiveOffsetPairs<StringRegion>, _>>::default();
 ///
 /// let mut indices = Vec::with_capacity(data.len());
 ///
@@ -112,6 +112,13 @@ where
             inner.clear();
         }
         self.indices.clear();
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        for inner in &self.inner {
+            inner.heap_size(&mut callback);
+        }
+        self.indices.heap_size(callback);
     }
 }
 

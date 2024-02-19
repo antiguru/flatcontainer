@@ -1,11 +1,11 @@
 //! Types to represent offsets.
 
-/// TODO
+/// A container to store offsets.
 pub trait OffsetContainer<T>: Default + Extend<T> {
     /// Accepts a newly pushed element.
     fn push(&mut self, item: T);
 
-    /// Lookup an index
+    /// Lookup an index. May panic for invalid indexes.
     fn index(&self, index: usize) -> T;
 
     /// Clear all contents.
@@ -22,14 +22,25 @@ pub trait OffsetContainer<T>: Default + Extend<T> {
 
     /// Reserve space for `additional` elements.
     fn reserve(&mut self, additional: usize);
+
+    /// Heap size, size - capacity
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 }
 
+/// A container for offsets that can represent strides of offsets.
+///
+/// Does not implement `OffsetContainer` because it cannot accept arbitrary pushes.
 #[derive(Debug, Default)]
-enum OffsetStride {
+pub enum OffsetStride {
+    /// No push has occurred.
     #[default]
     Empty,
+    /// Pushed a single 0.
     Zero,
+    /// `Striding(stride, count)`: `count` many steps of stride `stride` have been pushed.
     Striding(usize, usize),
+    /// `Saturated(stride, count, reps)`: `count` many steps of stride `stride`, followed by
+    /// `reps` repetitions of the last element have been pushed.
     Saturated(usize, usize, usize),
 }
 
@@ -110,15 +121,15 @@ pub struct OffsetList {
 }
 
 impl OffsetList {
-    // TODO
-    // /// Allocate a new list with a specified capacity.
-    // pub fn with_capacity(cap: usize) -> Self {
-    //     Self {
-    //         zero_prefix: 0,
-    //         smol: Vec::with_capacity(cap),
-    //         chonk: Vec::new(),
-    //     }
-    // }
+    /// Allocate a new list with a specified capacity.
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            zero_prefix: 0,
+            smol: Vec::with_capacity(cap),
+            chonk: Vec::new(),
+        }
+    }
+
     /// Inserts the offset, as a `u32` if that is still on the table.
     pub fn push(&mut self, offset: usize) {
         if self.smol.is_empty() && self.chonk.is_empty() && offset == 0 {
@@ -133,7 +144,8 @@ impl OffsetList {
             self.chonk.push(offset.try_into().unwrap())
         }
     }
-    /// Like `std::ops::Index`, which we cannot implement as it must return a `&usize`.
+
+    /// Like [`std::ops::Index`], which we cannot implement as it must return a `&usize`.
     pub fn index(&self, index: usize) -> usize {
         if index < self.zero_prefix {
             0
@@ -165,9 +177,15 @@ impl OffsetList {
         self.smol.clear();
         self.chonk.clear();
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.smol.heap_size(&mut callback);
+        self.chonk.heap_size(callback);
+    }
 }
 
-/// TODO
+/// An offset container implementation that first tries to recognize strides, and then spilles into
+/// a regular offset list.
 #[derive(Default, Debug)]
 pub struct OffsetOptimized {
     strided: OffsetStride,
@@ -208,6 +226,10 @@ impl OffsetContainer<usize> for OffsetOptimized {
             self.spilled.reserve(additional);
         }
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.spilled.heap_size(callback);
+    }
 }
 
 impl Extend<usize> for OffsetOptimized {
@@ -242,6 +264,11 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
     #[inline]
     fn reserve(&mut self, additional: usize) {
         self.reserve(additional)
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        let size_of_t = std::mem::size_of::<T>();
+        callback(self.len() * size_of_t, self.capacity() * size_of_t);
     }
 }
 

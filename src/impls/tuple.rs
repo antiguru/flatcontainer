@@ -58,6 +58,10 @@ macro_rules! tuple_flatcontainer {
                 fn clear(&mut self) {
                     $(self.[<container $name>].clear();)*
                 }
+
+                fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
+                    $(self.[<container $name>].heap_size(&mut callback);)*
+                }
             }
 
             #[allow(non_camel_case_types)]

@@ -16,7 +16,7 @@ impl<T: Containerized> Containerized for Option<T> {
 /// The region can hold options:
 /// ```
 /// # use flatcontainer::{Containerized, CopyOnto, OptionRegion, Region};
-/// let mut r = OptionRegion::<<u8 as Containerized>::Region>::default();
+/// let mut r = <OptionRegion<<u8 as Containerized>::Region>>::default();
 ///
 /// let some_index = Some(123).copy_onto(&mut r);
 /// // Type annotations required for `None`:
@@ -62,6 +62,10 @@ impl<R: Region> Region for OptionRegion<R> {
     #[inline]
     fn clear(&mut self) {
         self.inner.clear();
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
     }
 }
 

@@ -4,6 +4,17 @@ use crate::impls::offsets::OffsetContainer;
 use crate::{CopyOnto, Region};
 
 /// A region to deduplicate consecutive equal items.
+///
+/// # Examples
+///
+/// The following example shows that two inserts can result in the same index.
+/// ```
+/// use flatcontainer::impls::deduplicate::CollapseSequence;
+/// use flatcontainer::{CopyOnto, StringRegion};
+/// let mut r = <CollapseSequence<StringRegion>>::default();
+///
+/// assert_eq!("abc".copy_onto(&mut r), "abc".copy_onto(&mut r));
+/// ```
 #[derive(Debug, Clone)]
 pub struct CollapseSequence<R: Region> {
     /// Inner region.
@@ -54,6 +65,10 @@ where
         self.inner.clear();
         self.last_index = None;
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
 }
 
 impl<R: Region, T: CopyOnto<R>> CopyOnto<CollapseSequence<R>> for T
@@ -77,7 +92,19 @@ where
 /// be dense, i.e., `(i, j)` is followed by `(j, k)`.
 ///
 /// Defers to region `R` for storing items, and uses offset container `O` to
-/// rember indices. By default, `O` is `Vec<usize>`.
+/// remeber indices. By default, `O` is `Vec<usize>`.
+///
+/// # Examples
+///
+/// The following example shows that two inserts into a copy region have a collapsible index:
+/// ```
+/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+/// use flatcontainer::{CopyOnto, CopyRegion, Region, StringRegion};
+/// let mut r = <ConsecutiveOffsetPairs<CopyRegion<u8>>>::default();
+///
+/// let index: usize = b"abc"[..].copy_onto(&mut r);
+/// assert_eq!(b"abc", r.index(index));
+/// ```
 #[derive(Debug, Clone)]
 pub struct ConsecutiveOffsetPairs<R, O = Vec<usize>>
 where
@@ -147,6 +174,11 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
         self.offsets.clear();
         self.offsets.push(0);
     }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.offsets.heap_size(&mut callback);
+        self.inner.heap_size(callback);
+    }
 }
 
 impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R>>
@@ -169,7 +201,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
     use crate::impls::offsets::OffsetOptimized;
-    use crate::{CopyOnto, FlatStack, Region, StringRegion};
+    use crate::{CopyOnto, FlatStack, StringRegion};
 
     #[test]
     fn test_dedup_flatstack() {
@@ -178,6 +210,8 @@ mod tests {
         fs.copy("abc");
         fs.copy("abc");
 
+        assert_eq!(2, fs.len());
+
         println!("{fs:?}");
     }
 
@@ -185,11 +219,7 @@ mod tests {
     fn test_dedup_region() {
         let mut r = CollapseSequence::<StringRegion>::default();
 
-        fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
-            item.copy_onto(r)
-        }
-
-        assert_eq!(copy(&mut r, "abc"), copy(&mut r, "abc"));
+        assert_eq!("abc".copy_onto(&mut r), "abc".copy_onto(&mut r));
 
         println!("{r:?}");
     }
@@ -199,12 +229,8 @@ mod tests {
         let mut r =
             CollapseSequence::<ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>>::default();
 
-        fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
-            item.copy_onto(r)
-        }
-
         for _ in 0..1000 {
-            copy(&mut r, "abc");
+            "abc".copy_onto(&mut r);
         }
 
         println!("{r:?}");

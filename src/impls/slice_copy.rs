@@ -11,7 +11,7 @@ use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 ///
 /// ```
 /// use flatcontainer::{CopyOnto, CopyRegion, Region};
-/// let mut r = CopyRegion::<u8>::default();
+/// let mut r = <CopyRegion<_>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
 /// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";
@@ -57,6 +57,14 @@ impl<T: Copy> Region for CopyRegion<T> {
     #[inline]
     fn clear(&mut self) {
         self.slices.clear();
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        let size_of_t = std::mem::size_of::<T>();
+        callback(
+            self.slices.len() * size_of_t,
+            self.slices.capacity() * size_of_t,
+        );
     }
 }
 
