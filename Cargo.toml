@@ -6,7 +6,7 @@ authors = ["Moritz Hoffmann <antiguru@gmail.com>"]
 description = "A flat container representation for Rust"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/antiguru/flatcontainer"
-rust-version = "1.70"
+rust-version = "1.65"
 
 [dependencies]
 cfg-if = "1.0"
