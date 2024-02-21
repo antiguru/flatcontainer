@@ -13,9 +13,6 @@ cfg-if = "1.0"
 paste = "1.0"
 serde = { version = "1.0", optional = true, features = ["derive"]}
 
-[dev-dependencies]
-serde_json = "1.0"
-
 [features]
 default = ["serde"]
 
