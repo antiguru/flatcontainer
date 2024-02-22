@@ -55,8 +55,7 @@ impl<R: Region> Region for OptionRegion<R> {
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
     {
-        self.inner
-            .reserve_regions(regions.clone().map(|r| &r.inner));
+        self.inner.reserve_regions(regions.map(|r| &r.inner));
     }
 
     #[inline]
@@ -100,6 +99,6 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.inner, items.clone().flat_map(|r| r.as_ref()));
+        ReserveItems::reserve_items(&mut target.inner, items.flat_map(|r| r.as_ref()));
     }
 }

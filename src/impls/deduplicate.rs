@@ -149,7 +149,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
         let mut offsets = O::default();
         offsets.push(0);
         Self {
-            inner: R::merge_regions(regions.clone().map(|r| &r.inner)),
+            inner: R::merge_regions(regions.map(|r| &r.inner)),
             offsets,
             last_index: 0,
         }

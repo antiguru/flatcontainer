@@ -109,8 +109,7 @@ where
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
     {
-        self.inner
-            .reserve_regions(regions.clone().map(|r| &r.inner));
+        self.inner.reserve_regions(regions.map(|r| &r.inner));
     }
 
     fn clear(&mut self) {
