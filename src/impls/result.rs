@@ -65,7 +65,7 @@ where
         I: Iterator<Item = &'a Self> + Clone,
     {
         self.oks.reserve_regions(regions.clone().map(|r| &r.oks));
-        self.errs.reserve_regions(regions.clone().map(|r| &r.errs));
+        self.errs.reserve_regions(regions.map(|r| &r.errs));
     }
 
     #[inline]
@@ -130,9 +130,6 @@ where
         I: Iterator<Item = Self> + Clone,
     {
         ReserveItems::reserve_items(&mut target.oks, items.clone().flat_map(|r| r.as_ref().ok()));
-        ReserveItems::reserve_items(
-            &mut target.errs,
-            items.clone().flat_map(|r| r.as_ref().err()),
-        );
+        ReserveItems::reserve_items(&mut target.errs, items.flat_map(|r| r.as_ref().err()));
     }
 }
