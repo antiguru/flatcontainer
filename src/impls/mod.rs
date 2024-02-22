@@ -3,6 +3,7 @@
 pub mod codec;
 pub mod columns;
 pub mod deduplicate;
+pub mod fixed_columns;
 pub mod huffman_container;
 pub mod mirror;
 pub mod offsets;
