@@ -1,32 +1,4 @@
-//! Flatcontainer provides abstractions to represent collections of data in a flat structure.
-//!
-//! This library contains types and implementations that allow one to collect types deconstructed
-//! into their basic components, represented by few allocations. The catch is that the original
-//! type may be lost, but the library instead provides an equivalent representation.
-//!
-//! # Safety
-//!
-//! This crate is safe to use, and all unsafe code can be explained locally.
-//! At the moment, this is only for assuming that utf-8 data is correct, which is true by
-//! construction.
-//!
-//! # Features
-//!
-//! The `serde` feature controls whether types implement support for serializing and deserializing
-//! data. Enabled by default.
-//!
-//! # Examples
-//!
-//! The following example shows how to copy data into a [`FlatStack`]:
-//!
-//! ```
-//! use flatcontainer::*;
-//!
-//! let mut container = FlatStack::default_impl::<Vec<&'static str>>();
-//! container.copy(["Hello", "flatcontainer"]);
-//! println!("Element 0: {:?}", container.get(0));
-//! ```
-
+#![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
 use std::fmt::{Debug, Formatter};
@@ -65,6 +37,8 @@ impl<T: Copy> Index for T {}
 /// This type absorbs data and provides an index to look up an equivalent representation
 /// of this data at a later time. It is up to an implementation to select the appropriate
 /// presentation of the data, and what data it can absorb.
+///
+/// Implement the [`CopyOnto`] trait for all types that can be copied into a region.
 pub trait Region: Default {
     /// The type of the data that one gets out of the container.
     type ReadItem<'a>: CopyOnto<Self>
@@ -111,6 +85,8 @@ pub trait CopyOnto<C: Region> {
 }
 
 /// Reserve space in the receiving region.
+///
+/// Closely related to [`CopyOnto`], but separate because target type is likely different.
 pub trait ReserveItems<R: Region> {
     /// Ensure that the region can absorb `items` without reallocation.
     fn reserve_items<I>(target: &mut R, items: I)
