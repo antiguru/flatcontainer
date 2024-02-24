@@ -127,6 +127,7 @@ pub struct OffsetList {
 
 impl OffsetList {
     /// Allocate a new list with a specified capacity.
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
             zero_prefix: 0,
@@ -136,6 +137,10 @@ impl OffsetList {
     }
 
     /// Inserts the offset, as a `u32` if that is still on the table.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `usize` does not fit in `u64`.
     pub fn push(&mut self, offset: usize) {
         if self.smol.is_empty() && self.chonk.is_empty() && offset == 0 {
             self.zero_prefix += 1;
@@ -143,14 +148,19 @@ impl OffsetList {
             if let Ok(smol) = offset.try_into() {
                 self.smol.push(smol);
             } else {
-                self.chonk.push(offset.try_into().unwrap())
+                self.chonk.push(offset.try_into().unwrap());
             }
         } else {
-            self.chonk.push(offset.try_into().unwrap())
+            self.chonk.push(offset.try_into().unwrap());
         }
     }
 
     /// Like [`std::ops::Index`], which we cannot implement as it must return a `&usize`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds, i.e., it is larger or equal to the length.
+    #[must_use]
     pub fn index(&self, index: usize) -> usize {
         if index < self.zero_prefix {
             0
@@ -163,18 +173,20 @@ impl OffsetList {
         }
     }
     /// The number of offsets in the list.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.zero_prefix + self.smol.len() + self.chonk.len()
     }
 
     /// Returns `true` if this list contains no elements.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
     /// Reserve space for `additional` elements.
     pub fn reserve(&mut self, additional: usize) {
-        self.smol.reserve(additional)
+        self.smol.reserve(additional);
     }
 
     /// Remove all elements.
@@ -200,13 +212,13 @@ pub struct OffsetOptimized {
 
 impl OffsetContainer<usize> for OffsetOptimized {
     fn push(&mut self, item: usize) {
-        if !self.spilled.is_empty() {
-            self.spilled.push(item);
-        } else {
+        if self.spilled.is_empty() {
             let inserted = self.strided.push(item);
             if !inserted {
                 self.spilled.push(item);
             }
+        } else {
+            self.spilled.push(item);
         }
     }
 
@@ -249,27 +261,29 @@ impl Extend<usize> for OffsetOptimized {
 impl<T: Copy> OffsetContainer<T> for Vec<T> {
     #[inline]
     fn push(&mut self, item: T) {
-        self.push(item)
+        self.push(item);
     }
 
     #[inline]
+    #[must_use]
     fn index(&self, index: usize) -> T {
         self[index]
     }
 
     #[inline]
     fn clear(&mut self) {
-        self.clear()
+        self.clear();
     }
 
     #[inline]
+    #[must_use]
     fn len(&self) -> usize {
         self.len()
     }
 
     #[inline]
     fn reserve(&mut self, additional: usize) {
-        self.reserve(additional)
+        self.reserve(additional);
     }
 
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {

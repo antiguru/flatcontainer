@@ -82,10 +82,17 @@ impl<T: Index> CopyOnto<MirrorRegion<Self>> for T {
     }
 }
 
-impl<'a, T: Index> CopyOnto<MirrorRegion<T>> for &'a T {
+impl<T: Index> CopyOnto<MirrorRegion<T>> for &T {
     #[inline(always)]
     fn copy_onto(self, _target: &mut MirrorRegion<T>) -> T {
         *self
+    }
+}
+
+impl<T: Index> CopyOnto<MirrorRegion<T>> for &&T {
+    #[inline(always)]
+    fn copy_onto(self, _target: &mut MirrorRegion<T>) -> T {
+        **self
     }
 }
 
@@ -99,7 +106,7 @@ impl<T: Index> ReserveItems<MirrorRegion<T>> for T {
     }
 }
 
-impl<'a, T: Index> ReserveItems<MirrorRegion<T>> for &'a T {
+impl<T: Index> ReserveItems<MirrorRegion<T>> for &T {
     #[inline(always)]
     fn reserve_items<I>(_target: &mut MirrorRegion<T>, _items: I)
     where

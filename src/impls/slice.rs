@@ -123,32 +123,40 @@ pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Reg
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> ReadSlice<'a, C, O> {
     /// Read the n-th item from the underlying region.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds, i.e., it is larger than the
+    /// length of this slice representation.
     #[inline]
+    #[must_use]
     pub fn get(&self, index: usize) -> C::ReadItem<'_> {
-        if index > self.end - self.start {
-            panic!(
-                "Index {index} out of bounds {} ({}..{})",
-                self.end - self.start,
-                self.start,
-                self.end
-            );
-        }
+        assert!(
+            index <= self.end - self.start,
+            "Index {index} out of bounds {} ({}..{})",
+            self.end - self.start,
+            self.start,
+            self.end
+        );
         self.region
             .inner
             .index(self.region.slices.index(self.start + index))
     }
 
-    /// The number in this slice.
+    /// The number of elements in this slice.
+    #[must_use]
     pub fn len(&self) -> usize {
-        self.region.slices.len()
+        self.end - self.start
     }
 
     /// Returns `true` if the slice is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.region.slices.is_empty()
+        self.start == self.end
     }
 
     /// Returns an iterator over all contained items.
+    #[must_use]
     pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
         self.into_iter()
     }
@@ -222,7 +230,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        target.slices.reserve(items.clone().map(|i| i.len()).sum());
+        target.slices.reserve(items.clone().map(<[T]>::len).sum());
         ReserveItems::reserve_items(&mut target.inner, items.flat_map(|i| i.iter()));
     }
 }
@@ -247,7 +255,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(Deref::deref))
+        ReserveItems::reserve_items(target, items.map(Deref::deref));
     }
 }
 
@@ -304,7 +312,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(|item| item.as_slice()))
+        ReserveItems::reserve_items(target, items.map(<[T; N]>::as_slice));
     }
 }
 
@@ -316,5 +324,35 @@ where
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
         self.as_slice().copy_onto(target)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{CopyOnto, MirrorRegion, Region};
+
+    #[test]
+    fn read_slice() {
+        let s = [1, 2, 3, 4];
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+
+        let index = s.copy_onto(&mut r);
+
+        assert!(s.iter().copied().eq(r.index(index).iter()));
+
+        let index = s.copy_onto(&mut r);
+        let slice = r.index(index);
+        assert_eq!(s.len(), slice.len());
+        assert!(!slice.is_empty());
+        assert_eq!(s.get(0), Some(&1));
+        assert_eq!(s.get(1), Some(&2));
+        assert_eq!(s.get(2), Some(&3));
+        assert_eq!(s.get(3), Some(&4));
+
+        let index = <[u8; 0] as CopyOnto<_>>::copy_onto([], &mut r);
+        let slice = r.index(index);
+        assert_eq!(0, slice.len());
+        assert!(slice.is_empty());
     }
 }

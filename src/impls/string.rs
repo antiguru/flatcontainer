@@ -81,7 +81,7 @@ impl Containerized for String {
     type Region = StringRegion;
 }
 
-impl<'a> Containerized for &'a str {
+impl Containerized for &str {
     type Region = StringRegion;
 }
 
@@ -116,7 +116,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(String::as_str))
+        ReserveItems::reserve_items(target, items.map(String::as_str));
     }
 }
 
@@ -151,7 +151,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.inner, items.map(str::as_bytes))
+        ReserveItems::reserve_items(&mut target.inner, items.map(str::as_bytes));
     }
 }
 
@@ -164,7 +164,7 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.inner, items.map(|s| s.as_bytes()))
+        ReserveItems::reserve_items(&mut target.inner, items.map(|s| s.as_bytes()));
     }
 }
 

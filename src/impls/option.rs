@@ -99,6 +99,6 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.inner, items.flat_map(|r| r.as_ref()));
+        ReserveItems::reserve_items(&mut target.inner, items.filter_map(|r| r.as_ref()));
     }
 }

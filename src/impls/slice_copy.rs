@@ -76,6 +76,47 @@ impl<T: Copy> Default for CopyRegion<T> {
     }
 }
 
+impl<T, const N: usize> CopyOnto<CopyRegion<T>> for [T; N]
+where
+    T: Copy,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        (&self).copy_onto(target)
+    }
+}
+
+impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &[T; N]
+where
+    T: Copy,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        let start = target.slices.len();
+        target.slices.extend_from_slice(self);
+        (start, target.slices.len())
+    }
+}
+
+impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &&[T; N]
+where
+    T: Copy,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        (*self).copy_onto(target)
+    }
+}
+
+impl<T: Copy, const N: usize> ReserveItems<CopyRegion<T>> for &[T; N] {
+    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        target.slices.reserve(items.map(|i| i.len()).sum());
+    }
+}
+
 impl<T> CopyOnto<CopyRegion<T>> for &[T]
 where
     T: Copy,
@@ -88,12 +129,22 @@ where
     }
 }
 
+impl<T> CopyOnto<CopyRegion<T>> for &&[T]
+where
+    T: Copy,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+        (*self).copy_onto(target)
+    }
+}
+
 impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
     fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
-        target.slices.reserve(items.map(|i| i.len()).sum());
+        target.slices.reserve(items.map(<[T]>::len).sum());
     }
 }
 
@@ -112,7 +163,7 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(Vec::as_slice))
+        ReserveItems::reserve_items(target, items.map(Vec::as_slice));
     }
 }
 

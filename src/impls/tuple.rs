@@ -158,3 +158,46 @@ cfg_if::cfg_if! {
         tuple_flatcontainer!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z AA AB AC AD AE AF);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::impls::tuple::TupleABCRegion;
+    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+
+    #[test]
+    fn test_tuple() {
+        let t = (1, 2, 3);
+        let mut r = <TupleABCRegion<MirrorRegion<_>, MirrorRegion<_>, MirrorRegion<_>>>::default();
+        let index = t.copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&1, &2, &3).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&1, 2, 3).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&(1, 2, 3)).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&(1, &2, 3)).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+    }
+
+    #[test]
+    fn test_nested() {
+        let t = ("abc", 2, 3);
+        let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
+        let index = t.copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&"abc", &2, &3).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&"abc", 2, 3).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+
+        let index = (&("abc", 2, 3)).copy_onto(&mut r);
+        assert_eq!(t, r.index(index));
+    }
+}

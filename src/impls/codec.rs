@@ -244,7 +244,7 @@ mod dictionary {
             tags_used += self.stats.1[3].count_ones();
             let mg = self.stats.0.clone().done();
             let mut bytes = 0;
-            for (vec, _count) in mg.iter() {
+            for (vec, _count) in &mg {
                 bytes += vec.len();
             }
             // if self.total > 10000 && !mg.is_empty() {
@@ -256,7 +256,7 @@ mod dictionary {
                 self.bytes,
                 bytes,
                 self.total / (self.bytes + bytes),
-            )
+            );
             // }
         }
 
@@ -341,6 +341,7 @@ mod misra_gries {
         ///
         /// After `n` insertions it will contain only elements that were inserted at least `n/k` times.
         /// The actual memory use is proportional to `2 * k`, so that we can amortize the consolidation.
+        #[must_use]
         pub fn with_capacity(k: usize) -> Self {
             Self {
                 inner: Vec::with_capacity(2 * k),
@@ -348,6 +349,7 @@ mod misra_gries {
         }
 
         /// Completes the summary, and extracts the items and their counts.
+        #[must_use]
         pub fn done(mut self) -> Vec<(T, usize)> {
             use super::consolidate;
             consolidate(&mut self.inner);
@@ -366,7 +368,7 @@ mod misra_gries {
             if self.inner.len() > k {
                 let sub_weight = self.inner[k].1 - 1;
                 self.inner.truncate(k);
-                for (_, weight) in self.inner.iter_mut() {
+                for (_, weight) in &mut self.inner {
                     *weight -= sub_weight;
                 }
                 while self.inner.last().map(|x| x.1) == Some(0) {
