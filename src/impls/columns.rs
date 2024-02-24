@@ -2,6 +2,9 @@
 
 use std::fmt::Debug;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::CopyIter;
@@ -46,6 +49,13 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 /// }
 /// ```
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "R: Serialize + for<'a> Deserialize<'a>, Idx: Serialize + for<'a> Deserialize<'a>"
+    )
+)]
 pub struct ColumnsRegion<R, Idx>
 where
     R: Region<Index = Idx>,

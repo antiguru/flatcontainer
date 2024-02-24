@@ -1,5 +1,8 @@
 //! Types to represent offsets.
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 /// A container to store offsets.
 pub trait OffsetContainer<T>: Default + Extend<T> {
     /// Accepts a newly pushed element.
@@ -31,6 +34,7 @@ pub trait OffsetContainer<T>: Default + Extend<T> {
 ///
 /// Does not implement `OffsetContainer` because it cannot accept arbitrary pushes.
 #[derive(Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OffsetStride {
     /// No push has occurred.
     #[default]
@@ -111,6 +115,7 @@ impl OffsetStride {
 
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OffsetList {
     /// Length of a prefix of zero elements.
     pub zero_prefix: usize,
@@ -187,6 +192,7 @@ impl OffsetList {
 /// An offset container implementation that first tries to recognize strides, and then spilles into
 /// a regular offset list.
 #[derive(Default, Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OffsetOptimized {
     strided: OffsetStride,
     spilled: OffsetList,
