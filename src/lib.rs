@@ -276,7 +276,7 @@ impl<'a, R: Region> Iterator for Iter<'a, R> {
     }
 }
 
-impl<'a, R: Region> ExactSizeIterator for Iter<'a, R> {}
+impl<R: Region> ExactSizeIterator for Iter<'_, R> {}
 
 impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
@@ -438,7 +438,7 @@ mod tests {
         }
     }
 
-    impl<'a> CopyOnto<PersonRegion> for &'a Person {
+    impl CopyOnto<PersonRegion> for &Person {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = (&self.name).copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
@@ -447,7 +447,7 @@ mod tests {
         }
     }
 
-    impl<'a> ReserveItems<PersonRegion> for &'a Person {
+    impl ReserveItems<PersonRegion> for &Person {
         fn reserve_items<I>(target: &mut PersonRegion, items: I)
         where
             I: Iterator<Item = Self> + Clone,
@@ -458,7 +458,7 @@ mod tests {
         }
     }
 
-    impl<'a> CopyOnto<PersonRegion> for PersonRef<'a> {
+    impl CopyOnto<PersonRegion> for PersonRef<'_> {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = self.name.copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
