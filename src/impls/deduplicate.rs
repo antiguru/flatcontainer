@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
+use crate::impls::tuple::TupleABRegion;
 use crate::{Push, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
@@ -125,8 +126,9 @@ where
 /// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
-/// let index: usize = r.push(&b"abc");
-/// assert_eq!(b"abc", r.index(index));
+/// let index = r.push(&b"abc");
+/// assert_eq!(index.0, 0);
+/// assert_eq!(b"abc", r.index(0.into()));
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -182,7 +184,7 @@ where
     where
         Self: 'a;
 
-    type Index = usize;
+    type Index = Sequential;
 
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -201,7 +203,7 @@ where
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner
-            .index((self.offsets.index(index), self.offsets.index(index + 1)))
+            .index((self.offsets.index(index.0), self.offsets.index(index.0 + 1)))
     }
 
     #[inline]
@@ -247,7 +249,7 @@ where
         debug_assert_eq!(index.0, self.last_index);
         self.last_index = index.1;
         self.offsets.push(index.1);
-        self.offsets.len() - 2
+        (self.offsets.len() - 2).into()
     }
 }
 
@@ -261,6 +263,81 @@ where
         I: Iterator<Item = T> + Clone,
     {
         self.inner.reserve_items(items);
+    }
+}
+
+/// TODO
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct Sequential(pub usize);
+
+impl From<usize> for Sequential {
+    fn from(value: usize) -> Self {
+        Self(value)
+    }
+}
+
+/// TODO
+#[derive(Default)]
+pub struct CombineSequential<R>(R);
+
+impl<A, B, T> Push<T> for CombineSequential<TupleABRegion<A, B>>
+where
+    A: Region<Index = Sequential>,
+    B: Region<Index = Sequential>,
+    TupleABRegion<A, B>: Region<Index = (Sequential, Sequential)> + Push<T>,
+    CombineSequential<TupleABRegion<A, B>>: Region<Index = Sequential>,
+{
+    fn push(&mut self, item: T) -> Self::Index {
+        self.0.push(item).0
+    }
+}
+
+impl<A, B> Region for CombineSequential<TupleABRegion<A, B>>
+where
+    A: Region<Index = Sequential>,
+    B: Region<Index = Sequential>,
+{
+    type Owned = <TupleABRegion<A, B> as Region>::Owned;
+    type ReadItem<'a> = <TupleABRegion<A, B> as Region>::ReadItem<'a>
+    where
+        Self: 'a;
+    type Index = Sequential;
+
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self(<TupleABRegion<A, B> as Region>::merge_regions(
+            regions.map(|r| &r.0),
+        ))
+    }
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.0.index((index, index))
+    }
+
+    fn reserve_regions<'a, I>(&mut self, regions: I)
+    where
+        Self: 'a,
+        I: Iterator<Item = &'a Self> + Clone,
+    {
+        self.0.reserve_regions(regions.map(|r| &r.0));
+    }
+
+    fn clear(&mut self) {
+        self.0.clear()
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.0.heap_size(callback)
+    }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        <TupleABRegion<A, B> as Region>::reborrow(item)
     }
 }
 

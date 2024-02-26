@@ -375,6 +375,15 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a,
     }
 }
 
+impl<'a, R, O> ExactSizeIterator for ReadSliceIter<'a, R, O>
+where
+    R: Region,
+    O: OffsetContainer<R::Index>,
+    std::slice::Iter<'a, R::Owned>: ExactSizeIterator,
+    ReadSliceIterInner<'a, R, O>: ExactSizeIterator,
+{
+}
+
 impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIterInner<'a, C, O> {
     type Item = C::ReadItem<'a>;
 
@@ -384,6 +393,14 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIterInne
             .next()
             .map(|idx| self.0.inner.index(self.0.slices.index(idx)))
     }
+}
+
+impl<'a, R, O> ExactSizeIterator for ReadSliceIterInner<'a, R, O>
+where
+    R: Region,
+    O: OffsetContainer<R::Index>,
+    Range<usize>: ExactSizeIterator,
+{
 }
 
 impl<'a, C, T, O> Push<&'a [T]> for SliceRegion<C, O>

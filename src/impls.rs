@@ -10,6 +10,7 @@ pub mod option;
 pub mod result;
 pub mod slice;
 pub mod slice_copy;
+pub mod storage;
 pub mod string;
 pub mod tuple;
 mod vec;

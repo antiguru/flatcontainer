@@ -3,10 +3,29 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::impls::deduplicate::Sequential;
+
 /// A container to store offsets.
-pub trait OffsetContainer<T>: Default + Extend<T> {
+pub trait OffsetContainer<T>: Default {
+    /// Allocate with space for `capacity` elements.
+    fn with_capacity(capacity: usize) -> Self;
+
+    /// Allocate storage large enough to absorb `regions`'s contents.
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self::with_capacity(regions.map(Self::len).sum())
+    }
+
     /// Accepts a newly pushed element.
     fn push(&mut self, item: T);
+
+    /// Extend from iterator. Must be [`ExactSizeIterator`] to efficiently
+    /// pre-allocate.
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
+    where
+        I::IntoIter: ExactSizeIterator;
 
     /// Lookup an index. May panic for invalid indexes.
     fn index(&self, index: usize) -> T;
@@ -138,20 +157,28 @@ impl OffsetStride {
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OffsetList {
+pub struct OffsetList<S = Vec<u32>, L = Vec<u64>>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
     /// Offsets that fit within a `u32`.
-    pub smol: Vec<u32>,
+    pub smol: S,
     /// Offsets that either do not fit in a `u32`, or are inserted after some offset that did not fit.
-    pub chonk: Vec<u64>,
+    pub chonk: L,
 }
 
-impl OffsetList {
+impl<S, L> OffsetList<S, L>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
     /// Allocate a new list with a specified capacity.
     #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
-            smol: Vec::with_capacity(cap),
-            chonk: Vec::new(),
+            smol: S::with_capacity(cap),
+            chonk: L::default(),
         }
     }
 
@@ -180,9 +207,10 @@ impl OffsetList {
     #[must_use]
     pub fn index(&self, index: usize) -> usize {
         if index < self.smol.len() {
-            self.smol[index].try_into().unwrap()
+            self.smol.index(index).try_into().unwrap()
         } else {
-            self.chonk[index - self.smol.len()].try_into().unwrap()
+            let index = index - self.smol.len();
+            self.chonk.index(index).try_into().unwrap()
         }
     }
     /// The number of offsets in the list.
@@ -194,7 +222,7 @@ impl OffsetList {
     /// Returns `true` if this list contains no elements.
     #[must_use]
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.smol.is_empty() && self.chonk.is_empty()
     }
 
     /// Reserve space for `additional` elements.
@@ -218,12 +246,66 @@ impl OffsetList {
 /// a regular offset list.
 #[derive(Eq, PartialEq, Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OffsetOptimized {
+pub struct OffsetOptimized<S = Vec<u32>, L = Vec<u64>>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
     strided: OffsetStride,
-    spilled: OffsetList,
+    spilled: OffsetList<S, L>,
 }
 
-impl OffsetContainer<usize> for OffsetOptimized {
+impl OffsetContainer<Sequential> for OffsetStride {
+    fn with_capacity(_capacity: usize) -> Self {
+        Self::default()
+    }
+
+    fn push(&mut self, item: Sequential) {
+        let pushed = self.push(item.0);
+        debug_assert!(pushed);
+    }
+
+    fn extend<I: IntoIterator<Item = Sequential>>(&mut self, iter: I)
+    where
+        I::IntoIter: ExactSizeIterator,
+    {
+        for item in iter {
+            let pushed = self.push(item.0);
+            debug_assert!(pushed);
+        }
+    }
+
+    fn index(&self, index: usize) -> Sequential {
+        self.index(index).into()
+    }
+
+    fn clear(&mut self) {
+        self.clear();
+    }
+
+    fn len(&self) -> usize {
+        self.len()
+    }
+
+    fn reserve(&mut self, _additional: usize) {
+        // Nop
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
+        // Nop
+    }
+}
+
+impl<S, L> OffsetContainer<usize> for OffsetOptimized<S, L>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
+    fn with_capacity(_capacity: usize) -> Self {
+        // `self.strided` doesn't have any capacity, and we don't know the structure of the data.
+        Self::default()
+    }
+
     fn push(&mut self, item: usize) {
         if self.spilled.is_empty() {
             let inserted = self.strided.push(item);
@@ -232,6 +314,15 @@ impl OffsetContainer<usize> for OffsetOptimized {
             }
         } else {
             self.spilled.push(item);
+        }
+    }
+
+    fn extend<I: IntoIterator<Item = usize>>(&mut self, iter: I)
+    where
+        I::IntoIter: ExactSizeIterator,
+    {
+        for item in iter {
+            self.push(item);
         }
     }
 
@@ -263,7 +354,11 @@ impl OffsetContainer<usize> for OffsetOptimized {
     }
 }
 
-impl Extend<usize> for OffsetOptimized {
+impl<S, L> Extend<usize> for OffsetOptimized<S, L>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
     fn extend<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
         for item in iter {
             self.push(item);
@@ -272,9 +367,20 @@ impl Extend<usize> for OffsetOptimized {
 }
 
 impl<T: Copy> OffsetContainer<T> for Vec<T> {
+    fn with_capacity(capacity: usize) -> Self {
+        Vec::with_capacity(capacity)
+    }
+
     #[inline]
     fn push(&mut self, item: T) {
         self.push(item);
+    }
+
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
+    where
+        I::IntoIter: ExactSizeIterator,
+    {
+        Extend::extend(self, iter);
     }
 
     #[inline]
@@ -308,6 +414,7 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
+    use crate::impls::storage::Doubling;
     use crate::{Push, Region, SliceRegion, StringRegion};
 
     use super::*;
@@ -320,7 +427,7 @@ mod tests {
 
         let mut r = SliceRegion::<
             ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>,
-            OffsetOptimized,
+            OffsetStride,
         >::default();
         let idx = copy(&mut r, ["abc"]);
         assert_eq!("abc", r.index(idx).get(0))
@@ -328,7 +435,7 @@ mod tests {
 
     #[test]
     fn test_offset_optimized_clear() {
-        let mut oo = OffsetOptimized::default();
+        let mut oo = <OffsetOptimized>::default();
         oo.push(0);
         assert_eq!(oo.len(), 1);
         oo.clear();
@@ -342,7 +449,7 @@ mod tests {
 
     #[test]
     fn test_offset_optimized_reserve() {
-        let mut oo = OffsetOptimized::default();
+        let mut oo = <OffsetOptimized>::default();
         oo.push(9999999999);
         assert_eq!(oo.len(), 1);
         oo.reserve(1);
@@ -350,7 +457,7 @@ mod tests {
 
     #[test]
     fn test_offset_optimized_heap_size() {
-        let mut oo = OffsetOptimized::default();
+        let mut oo = <OffsetOptimized>::default();
         oo.push(9999999999);
         let mut cap = 0;
         oo.heap_size(|_, ca| {
@@ -388,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_chonk() {
-        let mut ol = OffsetList::default();
+        let mut ol = <OffsetList>::default();
         ol.push(usize::MAX);
         assert_eq!(usize::MAX, ol.index(0));
     }
@@ -398,5 +505,13 @@ mod tests {
     fn test_offset_stride_index() {
         let os = OffsetStride::default();
         let _ = os.index(0);
+    }
+
+    #[test]
+    fn test_offset_optimized_doubling() {
+        let mut oo = <OffsetOptimized<Doubling<_>, Doubling<_>>>::default();
+        oo.push(9999999999);
+        assert_eq!(oo.len(), 1);
+        oo.reserve(1);
     }
 }

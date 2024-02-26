@@ -1,6 +1,8 @@
 //! A region to contain a variable number of columns.
 
 use std::fmt::Debug;
+use std::iter::Zip;
+use std::slice::Iter;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -90,7 +92,7 @@ where
 {
     type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
-    type Index = usize;
+    type Index = <ConsecutiveOffsetPairs<OwnedRegion<R::Index>, OffsetOptimized> as Region>::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -321,13 +323,11 @@ where
 }
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIter<'a, R: Region>(
-    Result<ReadColumnsIterInner<'a, R>, std::slice::Iter<'a, R::Owned>>,
-);
+pub struct ReadColumnsIter<'a, R: Region>(Result<ReadColumnsIterInner<'a, R>, Iter<'a, R::Owned>>);
 
 /// An iterator over the elements of a row.
 pub struct ReadColumnsIterInner<'a, R: Region> {
-    iter: std::iter::Zip<std::slice::Iter<'a, R::Index>, std::slice::Iter<'a, R>>,
+    iter: Zip<Iter<'a, R::Index>, Iter<'a, R>>,
 }
 
 impl<'a, R> Iterator for ReadColumnsIter<'a, R>
@@ -342,7 +342,16 @@ where
             Err(slice) => slice.next().map(IntoOwned::borrow_as),
         }
     }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        match &self.0 {
+            Ok(inner) => inner.size_hint(),
+            Err(slice) => slice.size_hint(),
+        }
+    }
 }
+
+impl<'a, R> ExactSizeIterator for ReadColumnsIter<'a, R> where R: Region {}
 
 impl<'a, R> Iterator for ReadColumnsIterInner<'a, R>
 where
@@ -352,6 +361,10 @@ where
 
     fn next(&mut self) -> Option<Self::Item> {
         self.iter.next().map(|(&i, r)| r.index(i))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
     }
 }
 
@@ -467,6 +480,7 @@ impl<R, T, I> Push<CopyIter<I>> for ColumnsRegion<R>
 where
     R: Region + Push<T>,
     I: IntoIterator<Item = T>,
+    I::IntoIter: ExactSizeIterator,
 {
     #[inline]
     fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R> as Region>::Index {

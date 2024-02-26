@@ -1,7 +1,7 @@
 //! Demonstration of how to encode recursive data structures.
 
 use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-use flatcontainer::{IntoOwned, Push, Region, StringRegion};
+use flatcontainer::{IntoOwned, Push, Region, Storage, StringRegion};
 
 #[derive(Clone)]
 struct List<T>(T, Option<Box<List<T>>>);
@@ -108,7 +108,7 @@ where
     }
 
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        self.indexes.heap_size(&mut callback);
+        Storage::heap_size(&self.indexes, &mut callback);
         self.inner.heap_size(callback);
     }
 
