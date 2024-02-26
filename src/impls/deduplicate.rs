@@ -1,5 +1,8 @@
 //! Simple deduplication of equal consecutive items.
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::impls::offsets::OffsetContainer;
 use crate::{CopyOnto, Region};
 
@@ -16,6 +19,7 @@ use crate::{CopyOnto, Region};
 /// assert_eq!("abc".copy_onto(&mut r), "abc".copy_onto(&mut r));
 /// ```
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CollapseSequence<R: Region> {
     /// Inner region.
     inner: R,
@@ -106,6 +110,7 @@ where
 /// assert_eq!(b"abc", r.index(index));
 /// ```
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConsecutiveOffsetPairs<R, O = Vec<usize>>
 where
     R: Region<Index = (usize, usize)>,

@@ -129,7 +129,10 @@ where
     where
         I: Iterator<Item = Self> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.oks, items.clone().flat_map(|r| r.as_ref().ok()));
-        ReserveItems::reserve_items(&mut target.errs, items.flat_map(|r| r.as_ref().err()));
+        ReserveItems::reserve_items(
+            &mut target.oks,
+            items.clone().filter_map(|r| r.as_ref().ok()),
+        );
+        ReserveItems::reserve_items(&mut target.errs, items.filter_map(|r| r.as_ref().err()));
     }
 }

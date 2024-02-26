@@ -131,6 +131,7 @@ where
 impl<R: Region> FlatStack<R> {
     /// Default implementation based on the preference of type `T`.
     #[inline]
+    #[must_use]
     pub fn default_impl<T: Containerized<Region = R>>() -> Self {
         Self::default()
     }
@@ -138,6 +139,7 @@ impl<R: Region> FlatStack<R> {
     /// Returns a flat stack that can absorb `capacity` indices without reallocation.
     ///
     /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
+    #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             indices: Vec::with_capacity(capacity),
@@ -146,6 +148,7 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Returns a flat stack that can absorb the contents of `iter` without reallocation.
+    #[must_use]
     pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
     where
         R: 'a,
@@ -165,30 +168,34 @@ impl<R: Region> FlatStack<R> {
 
     /// Returns the element at the `offset` position.
     #[inline]
+    #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'_> {
         self.region.index(self.indices[offset])
     }
 
     /// Returns the number of indices in the stack.
     #[inline]
+    #[must_use]
     pub fn len(&self) -> usize {
         self.indices.len()
     }
 
     /// Returns `true` if the stack contains no elements.
     #[inline]
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
     }
 
     /// Returns the total number of indices the stack can hold without reallocation.
+    #[must_use]
     pub fn capacity(&self) -> usize {
         self.indices.capacity()
     }
 
     /// Reserves space to hold `additional` indices.
     pub fn reserve(&mut self, additional: usize) {
-        self.indices.reserve(additional)
+        self.indices.reserve(additional);
     }
 
     /// Remove all elements while possibly retaining allocations.
@@ -210,7 +217,7 @@ impl<R: Region> FlatStack<R> {
     where
         R: 'a,
     {
-        self.region.reserve_regions(regions)
+        self.region.reserve_regions(regions);
     }
 
     /// Iterate the items in this stack.
@@ -220,8 +227,8 @@ impl<R: Region> FlatStack<R> {
 
     /// Heap size, size - capacity
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        self.region.heap_size(&mut callback);
         use crate::impls::offsets::OffsetContainer;
+        self.region.heap_size(&mut callback);
         self.indices.heap_size(callback);
     }
 }
@@ -269,7 +276,7 @@ impl<'a, R: Region> Iterator for Iter<'a, R> {
     }
 }
 
-impl<'a, R: Region> ExactSizeIterator for Iter<'a, R> {}
+impl<R: Region> ExactSizeIterator for Iter<'_, R> {}
 
 impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
@@ -431,7 +438,7 @@ mod tests {
         }
     }
 
-    impl<'a> CopyOnto<PersonRegion> for &'a Person {
+    impl CopyOnto<PersonRegion> for &Person {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = (&self.name).copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
@@ -440,7 +447,7 @@ mod tests {
         }
     }
 
-    impl<'a> ReserveItems<PersonRegion> for &'a Person {
+    impl ReserveItems<PersonRegion> for &Person {
         fn reserve_items<I>(target: &mut PersonRegion, items: I)
         where
             I: Iterator<Item = Self> + Clone,
@@ -451,7 +458,7 @@ mod tests {
         }
     }
 
-    impl<'a> CopyOnto<PersonRegion> for PersonRef<'a> {
+    impl CopyOnto<PersonRegion> for PersonRef<'_> {
         fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
             let name = self.name.copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
@@ -516,6 +523,7 @@ mod tests {
         }
 
         test_copy::<_, StringRegion>(&"a".to_string());
+        test_copy::<_, StringRegion>("a".to_string());
         test_copy::<_, StringRegion>("a");
 
         test_copy::<_, MirrorRegion<()>>(());
@@ -581,12 +589,33 @@ mod tests {
         test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>(&vec![("a",)]);
 
         test_copy::<_, CopyRegion<_>>([0u8].as_slice());
+        test_copy::<_, CopyRegion<_>>(&[0u8].as_slice());
 
         test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
+        test_copy::<_, <(u8, u8) as Containerized>::Region>(&(1, 2));
 
         test_copy::<_, ConsecutiveOffsetPairs<CopyRegion<_>>>([1, 2, 3].as_slice());
 
         test_copy::<_, CollapseSequence<CopyRegion<_>>>([1, 2, 3].as_slice());
+        test_copy::<_, CollapseSequence<CopyRegion<_>>>(&[1, 2, 3]);
+
+        test_copy::<_, OptionRegion<StringRegion>>(Some("abc"));
+        test_copy::<_, OptionRegion<StringRegion>>(&Some("abc"));
+        test_copy::<_, OptionRegion<StringRegion>>(Option::<&'static str>::None);
+        test_copy::<_, OptionRegion<StringRegion>>(&Option::<&'static str>::None);
+
+        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+            Result::<&'static str, u8>::Ok("abc"),
+        );
+        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+            &Result::<&'static str, u8>::Ok("abc"),
+        );
+        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+            Result::<&'static str, u8>::Err(1),
+        );
+        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+            Result::<&'static str, u8>::Err(2),
+        );
     }
 
     #[test]

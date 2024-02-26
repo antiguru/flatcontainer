@@ -2,6 +2,9 @@
 
 use std::fmt::Debug;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::CopyIter;
@@ -46,6 +49,13 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 /// }
 /// ```
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+#[cfg_attr(
+    feature = "serde",
+    serde(
+        bound = "R: Serialize + for<'a> Deserialize<'a>, Idx: Serialize + for<'a> Deserialize<'a>"
+    )
+)]
 pub struct ColumnsRegion<R, Idx>
 where
     R: Region<Index = Idx>,
@@ -75,7 +85,7 @@ where
         let mut inner = Vec::with_capacity(cols);
         for col in 0..cols {
             inner.push(R::merge_regions(
-                regions.clone().flat_map(|r| r.inner.get(col)),
+                regions.clone().filter_map(|r| r.inner.get(col)),
             ));
         }
 
@@ -103,7 +113,7 @@ where
             }
         }
         for (index, inner) in self.inner.iter_mut().enumerate() {
-            inner.reserve_regions(regions.clone().flat_map(|r| r.inner.get(index)))
+            inner.reserve_regions(regions.clone().filter_map(|r| r.inner.get(index)));
         }
     }
 
@@ -181,21 +191,25 @@ where
     Idx: Index,
 {
     /// Iterate the individual values of a row.
+    #[must_use]
     pub fn iter(&'a self) -> ReadColumnsIter<'a, R, Idx> {
         self.into_iter()
     }
 
     /// Get the element at `offset`.
+    #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
         self.columns[offset].index(self.index[offset])
     }
 
     /// Returns the length of this row.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.index.len()
     }
 
     /// Returns `true` if this row is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
