@@ -285,7 +285,7 @@ impl<R: Region> FlatStack<R> {
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
-        self.indices.heap_size(callback);
+        OffsetContainer::heap_size(&self.indices, callback);
     }
 }
 

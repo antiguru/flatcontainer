@@ -1,7 +1,6 @@
 //! Demonstration of how to encode recursive data structures.
 
 use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-use flatcontainer::impls::offsets::OffsetContainer;
 use flatcontainer::{IntoOwned, Push, Region, StringRegion};
 
 #[derive(Clone)]
