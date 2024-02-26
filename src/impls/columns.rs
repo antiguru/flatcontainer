@@ -48,7 +48,7 @@ use crate::{OwnedRegion, Push, Region};
 ///     assert!(row.iter().copied().eq(r.index(index).iter()));
 /// }
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",
@@ -65,6 +65,23 @@ where
     indices: ConsecutiveOffsetPairs<OwnedRegion<R::Index>, OffsetOptimized>,
     /// Storage for columns.
     inner: Vec<R>,
+}
+
+impl<R> Clone for ColumnsRegion<R>
+where
+    R: Region + Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            indices: self.indices.clone(),
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.indices.clone_from(&source.indices);
+        self.inner.clone_from(&source.inner);
+    }
 }
 
 impl<R> Region for ColumnsRegion<R>

@@ -78,11 +78,6 @@ where
     type ReadItem<'a> = ListRef<'a, C> where C: 'a;
     type Index = usize;
 
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        let (inner_index, continuation) = self.indexes[index];
-        ListRef(Ok((self, inner_index, continuation)))
-    }
-
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -91,6 +86,11 @@ where
             indexes: Vec::with_capacity(regions.clone().map(|r| r.indexes.len()).sum()),
             inner: C::merge_regions(regions.map(|r| &r.inner)),
         }
+    }
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        let (inner_index, continuation) = self.indexes[index];
+        ListRef(Ok((self, inner_index, continuation)))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)

@@ -30,13 +30,22 @@ use crate::{Containerized, Push, Region, ReserveItems};
 /// assert_eq!(panagram_de, r.index(de_index));
 /// assert_eq!(panagram_en, r.index(en_index));
 /// ```
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StringRegion<R = OwnedRegion<u8>>
-where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-{
+pub struct StringRegion<R = OwnedRegion<u8>> {
     inner: R,
+}
+
+impl<R: Clone> Clone for StringRegion<R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+    }
 }
 
 impl<R> Region for StringRegion<R>

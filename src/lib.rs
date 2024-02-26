@@ -359,6 +359,11 @@ impl<R: Region + Clone> Clone for FlatStack<R> {
             indices: self.indices.clone(),
         }
     }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.region.clone_from(&source.region);
+        self.indices.clone_from(&source.indices);
+    }
 }
 
 /// A type to wrap and copy iterators onto regions.

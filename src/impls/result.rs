@@ -25,11 +25,25 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 /// assert_eq!(Ok(()), r.index(ok_index));
 /// assert_eq!(Err("Error"), r.index(err_index));
 /// ```
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ResultRegion<T, E> {
     oks: T,
     errs: E,
+}
+
+impl<T: Clone, E: Clone> Clone for ResultRegion<T, E> {
+    fn clone(&self) -> Self {
+        Self {
+            oks: self.oks.clone(),
+            errs: self.errs.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.oks.clone_from(&source.oks);
+        self.errs.clone_from(&source.errs);
+    }
 }
 
 impl<T, E> Region for ResultRegion<T, E>

@@ -18,13 +18,27 @@ use crate::{Push, Region, ReserveItems};
 ///
 /// assert_eq!(r.push("abc"), r.push("abc"));
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CollapseSequence<R: Region> {
     /// Inner region.
     inner: R,
     /// The index of the last pushed item.
     last_index: Option<R::Index>,
+}
+
+impl<R: Region + Clone> Clone for CollapseSequence<R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            last_index: self.last_index,
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+        self.last_index = source.last_index;
+    }
 }
 
 impl<R: Region> Default for CollapseSequence<R> {
@@ -114,13 +128,9 @@ where
 /// let index: usize = r.push(&b"abc");
 /// assert_eq!(b"abc", r.index(index));
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ConsecutiveOffsetPairs<R, O = OffsetOptimized>
-where
-    R: Region<Index = (usize, usize)>,
-    O: OffsetContainer<usize>,
-{
+pub struct ConsecutiveOffsetPairs<R, O = OffsetOptimized> {
     /// Wrapped region
     inner: R,
     /// Storage for offsets. Always stores element 0.
@@ -129,8 +139,26 @@ where
     last_index: usize,
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
-    for ConsecutiveOffsetPairs<R, O>
+impl<R: Clone, O: Clone> Clone for ConsecutiveOffsetPairs<R, O> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            offsets: self.offsets.clone(),
+            last_index: self.last_index,
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+        self.offsets.clone_from(&source.offsets);
+        self.last_index = source.last_index;
+    }
+}
+
+impl<R, O> Default for ConsecutiveOffsetPairs<R, O>
+where
+    R: Default,
+    O: OffsetContainer<usize>,
 {
     #[inline]
     fn default() -> Self {
