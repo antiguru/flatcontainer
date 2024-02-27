@@ -70,7 +70,7 @@ where
         }
     }
 
-    fn reserve_regions<'a, I>(&mut self, regions: I)
+    fn reserve_regions<'a, I>(&mut self, _regions: I)
     where
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
@@ -79,10 +79,14 @@ where
     }
 
     fn clear(&mut self) {
-        todo!()
+        match &mut self.inner {
+            Ok(_) => self.inner = Err(Vec::default()),
+            Err(vec) => vec.clear(),
+        }
+        self.stats.clear();
     }
 
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+    fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
         todo!()
     }
 }
@@ -103,7 +107,7 @@ where
             }
             Err(raw) => {
                 let start = raw.len();
-                raw.extend_from_slice(&self);
+                raw.extend_from_slice(self);
                 (start, raw.len())
             }
         }
