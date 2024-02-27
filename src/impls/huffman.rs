@@ -87,7 +87,7 @@ where
     }
 }
 
-impl<B> CopyOnto<HuffmanContainer<B>> for Vec<B>
+impl<B> CopyOnto<HuffmanContainer<B>> for &[B]
 where
     B: Ord + Clone + Sized + 'static,
 {
@@ -107,6 +107,42 @@ where
                 (start, raw.len())
             }
         }
+    }
+}
+
+impl<B, const N: usize> CopyOnto<HuffmanContainer<B>> for [B; N]
+where
+    B: Ord + Clone + Sized + 'static,
+{
+    fn copy_onto(self, target: &mut HuffmanContainer<B>) -> (usize, usize) {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<B, const N: usize> CopyOnto<HuffmanContainer<B>> for &[B; N]
+where
+    B: Ord + Clone + Sized + 'static,
+{
+    fn copy_onto(self, target: &mut HuffmanContainer<B>) -> (usize, usize) {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<B> CopyOnto<HuffmanContainer<B>> for Vec<B>
+where
+    B: Ord + Clone + Sized + 'static,
+{
+    fn copy_onto(self, target: &mut HuffmanContainer<B>) -> (usize, usize) {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<B> CopyOnto<HuffmanContainer<B>> for &Vec<B>
+where
+    B: Ord + Clone + Sized + 'static,
+{
+    fn copy_onto(self, target: &mut HuffmanContainer<B>) -> (usize, usize) {
+        self.as_slice().copy_onto(target)
     }
 }
 
@@ -152,112 +188,6 @@ where
     }
 }
 
-//impl<B> BatchContainer for HuffmanContainer<B>
-//where
-//    B: Ord + Clone + Sized + 'static,
-//{
-//    type PushItem = Vec<B>;
-//    type ReadItem<'a> = Wrapped<'a, B>;
-//    fn push(&mut self, item: Vec<B>) {
-//        for x in item.iter() { *self.stats.entry(x.clone()).or_insert(0) += 1; }
-//        match &mut self.inner {
-//            Ok((huffman, bytes)) => {
-//                bytes.extend(huffman.encode(item.iter()));
-//                self.offsets.push(bytes.len());
-//            },
-//            Err(raw) => {
-//                raw.extend(item);
-//                self.offsets.push(raw.len());
-//            }
-//        }
-//    }
-//    fn copy_push(&mut self, item: &Vec<B>) {
-//        use crate::trace::MyTrait;
-//        self.copy(<_ as MyTrait>::borrow_as(item));
-//    }
-//    fn copy(&mut self, item: Self::ReadItem<'_>) {
-//        match item.decode() {
-//            Ok(decoded) => {
-//                for x in decoded { *self.stats.entry(x.clone()).or_insert(0) += 1; }
-//
-//            },
-//            Err(symbols) => {
-//                for x in symbols.iter() { *self.stats.entry(x.clone()).or_insert(0) += 1; }
-//            }
-//        }
-//        match (item.decode(), &mut self.inner) {
-//            (Ok(decoded), Ok((huffman, bytes))) => {
-//                bytes.extend(huffman.encode(decoded));
-//                self.offsets.push(bytes.len());
-//            }
-//            (Ok(decoded), Err(raw)) => {
-//                raw.extend(decoded.cloned());
-//                self.offsets.push(raw.len());
-//            }
-//            (Err(symbols), Ok((huffman, bytes))) => {
-//                bytes.extend(huffman.encode(symbols.iter()));
-//                self.offsets.push(bytes.len());
-//            }
-//            (Err(symbols), Err(raw)) => {
-//                raw.extend(symbols.iter().cloned());
-//                self.offsets.push(raw.len());
-//            }
-//        }
-//    }
-//    fn copy_range(&mut self, other: &Self, start: usize, end: usize) {
-//        for index in start .. end {
-//            self.copy(other.index(index));
-//        }
-//    }
-//    fn with_capacity(size: usize) -> Self {
-//        let mut offsets = OffsetList::with_capacity(size + 1);
-//        offsets.push(0);
-//        Self {
-//            inner: Err(Vec::with_capacity(size)),
-//            offsets,
-//            stats: Default::default(),
-//        }
-//    }
-//    fn merge_capacity(cont1: &Self, cont2: &Self) -> Self {
-//
-//        if cont1.len() > 0 { cont1.print(); }
-//        if cont2.len() > 0 { cont2.print(); }
-//
-//        let mut counts = BTreeMap::default();
-//        for (symbol, count) in cont1.stats.iter() {
-//            *counts.entry(symbol.clone()).or_insert(0) += count;
-//        }
-//        for (symbol, count) in cont2.stats.iter() {
-//            *counts.entry(symbol.clone()).or_insert(0) += count;
-//        }
-//
-//        let bytes = Vec::with_capacity(counts.values().cloned().sum::<i64>() as usize);
-//        let huffman = Huffman::create_from(counts);
-//        let inner = Ok((huffman, bytes));
-//        // : Err(Vec::with_capacity(length))
-//
-//        let length = cont1.offsets.len() + cont2.offsets.len() - 2;
-//        let mut offsets = OffsetList::with_capacity(length + 1);
-//        offsets.push(0);
-//        Self {
-//            inner,
-//            offsets,
-//            stats: Default::default(),
-//        }
-//    }
-//    fn index(&self, index: usize) -> Self::ReadItem<'_> {
-//        let lower = self.offsets.index(index);
-//        let upper = self.offsets.index(index+1);
-//        match &self.inner {
-//            Ok((huffman, bytes)) => Wrapped::encoded(Encoded::new(huffman, &bytes[lower .. upper])),
-//            Err(raw) => Wrapped::decoded(&raw[lower .. upper]),
-//        }
-//    }
-//    fn len(&self) -> usize {
-//        self.offsets.len() - 1
-//    }
-//}
-/// Default implementation introduces a first offset.
 impl<B: Ord + Clone> Default for HuffmanContainer<B> {
     fn default() -> Self {
         Self {
@@ -268,11 +198,22 @@ impl<B: Ord + Clone> Default for HuffmanContainer<B> {
 }
 
 mod wrapper {
+    use std::fmt::Debug;
 
     use super::Encoded;
 
     pub struct Wrapped<'a, B: Ord> {
         inner: Result<Encoded<'a, B>, &'a [B]>,
+    }
+
+    impl<B: Ord + Debug> std::fmt::Debug for Wrapped<'_, B> {
+        fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+            let mut list = fmt.debug_list();
+            match &self.inner {
+                Ok(encoded) => list.entries(encoded.decode()).finish(),
+                Err(symbols) => list.entries(*symbols).finish(),
+            }
+        }
     }
 
     impl<'a, B: Ord> Wrapped<'a, B> {
@@ -642,5 +583,42 @@ mod huffman {
                 Some(byte as u8)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{CopyOnto, Region};
+
+    use super::*;
+
+    #[test]
+    fn test_huffman() {
+        let copy = |r: &mut HuffmanContainer<u8>, item: [u8; 3]| {
+            let index = item.copy_onto(r);
+            assert_eq!(Wrapped::decoded(item.as_slice()), r.index(index));
+        };
+
+        let mut c = HuffmanContainer::<u8>::default();
+        copy(&mut c, [1, 2, 3]);
+        [1, 2, 3].copy_onto(&mut c);
+        [1, 2, 3].copy_onto(&mut c);
+        [1, 2, 3].copy_onto(&mut c);
+        [2, 3, 4].copy_onto(&mut c);
+        [2, 3, 4].copy_onto(&mut c);
+
+        let mut c2 = HuffmanContainer::merge_regions([&c].into_iter());
+        [1, 2, 3].copy_onto(&mut c2);
+        [1, 2, 3].copy_onto(&mut c2);
+        [1, 2, 3].copy_onto(&mut c2);
+        [2, 3, 4].copy_onto(&mut c2);
+        [2, 3, 4].copy_onto(&mut c2);
+
+        let mut c3 = HuffmanContainer::merge_regions([&c2].into_iter());
+        [1, 2, 3].copy_onto(&mut c3);
+        [1, 2, 3].copy_onto(&mut c3);
+        [1, 2, 3].copy_onto(&mut c3);
+        [2, 3, 4].copy_onto(&mut c3);
+        [2, 3, 4].copy_onto(&mut c3);
     }
 }
