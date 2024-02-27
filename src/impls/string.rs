@@ -11,6 +11,9 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 /// Delegates to a region `R` to store `u8` slices. By default, it uses a [`CopyRegion`], but a
 /// different region can be provided, as long as it absorbs and reads items as `&[u8]`.
 ///
+/// Note that all implementations of `CopyOnto<StringRegion>` must only accept valid utf-8 data
+/// because the region does not validate the contents when indexing.
+///
 /// # Examples
 ///
 /// We fill some data into a string region and use extract it later.
@@ -32,7 +35,6 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 pub struct StringRegion<R = CopyRegion<u8>>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R>,
 {
     inner: R,
 }
@@ -40,7 +42,6 @@ where
 impl<R> Region for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R>,
 {
     type ReadItem<'a> = &'a str where Self: 'a ;
     type Index = R::Index;
@@ -56,6 +57,7 @@ where
 
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        // SAFETY: All CopyOnto implementations only accept correct utf8 data
         unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
     }
 
@@ -110,7 +112,7 @@ where
 impl<R> ReserveItems<StringRegion<R>> for &String
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+    for<'a> &'a [u8]: ReserveItems<R>,
 {
     fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where
@@ -145,7 +147,7 @@ where
 impl<R> ReserveItems<StringRegion<R>> for &str
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+    for<'a> &'a [u8]: ReserveItems<R>,
 {
     fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where
@@ -158,7 +160,7 @@ where
 impl<R> ReserveItems<StringRegion<R>> for &&str
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R> + ReserveItems<R>,
+    for<'a> &'a [u8]: ReserveItems<R>,
 {
     fn reserve_items<I>(target: &mut StringRegion<R>, items: I)
     where

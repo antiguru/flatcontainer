@@ -80,7 +80,6 @@ pub struct CodecRegion<C: Codec, R = CopyRegion<u8>> {
 impl<C: Codec, R> Region for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R>,
 {
     type ReadItem<'a> = &'a [u8]
     where

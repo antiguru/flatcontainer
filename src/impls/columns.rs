@@ -238,9 +238,10 @@ where
     }
 }
 
-impl<'a, R> CopyOnto<ColumnsRegion<R>> for ReadColumns<'a, R>
+impl<R> CopyOnto<ColumnsRegion<R>> for ReadColumns<'_, R>
 where
     R: Region,
+    for<'a> R::ReadItem<'a>: CopyOnto<R>,
 {
     fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
