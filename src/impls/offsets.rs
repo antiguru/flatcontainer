@@ -19,6 +19,7 @@ pub trait OffsetContainer<T>: Default + Extend<T> {
 
     /// Returns `true` if empty.
     #[inline]
+    #[must_use]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -50,7 +51,8 @@ pub enum OffsetStride {
 
 impl OffsetStride {
     /// Accepts or rejects a newly pushed element.
-    fn push(&mut self, item: usize) -> bool {
+    #[must_use]
+    pub fn push(&mut self, item: usize) -> bool {
         match self {
             OffsetStride::Empty => {
                 if item == 0 {
@@ -86,7 +88,14 @@ impl OffsetStride {
         }
     }
 
-    fn index(&self, index: usize) -> usize {
+    /// Lookup the element at `index`.
+    ///
+    /// # Panics
+    ///
+    /// Panics for out-of-bounds accesses, i.e., if `index` greater or equal to
+    /// [`len`][OffsetStride::len].
+    #[must_use]
+    pub fn index(&self, index: usize) -> usize {
         match self {
             OffsetStride::Empty => {
                 panic!("Empty OffsetStride")
@@ -103,7 +112,9 @@ impl OffsetStride {
         }
     }
 
-    fn len(&self) -> usize {
+    /// Returns the number of elements.
+    #[must_use]
+    pub fn len(&self) -> usize {
         match self {
             OffsetStride::Empty => 0,
             OffsetStride::Zero => 1,
@@ -111,14 +122,23 @@ impl OffsetStride {
             OffsetStride::Saturated(_stride, steps, reps) => *steps + *reps,
         }
     }
+
+    /// Returns `true` if empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        matches!(self, OffsetStride::Empty)
+    }
+
+    /// Removes all elements.
+    pub fn clear(&mut self) {
+        *self = Self::default();
+    }
 }
 
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OffsetList {
-    /// Length of a prefix of zero elements.
-    pub zero_prefix: usize,
     /// Offsets that fit within a `u32`.
     pub smol: Vec<u32>,
     /// Offsets that either do not fit in a `u32`, or are inserted after some offset that did not fit.
@@ -130,7 +150,6 @@ impl OffsetList {
     #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         Self {
-            zero_prefix: 0,
             smol: Vec::with_capacity(cap),
             chonk: Vec::new(),
         }
@@ -142,9 +161,7 @@ impl OffsetList {
     ///
     /// Panics if `usize` does not fit in `u64`.
     pub fn push(&mut self, offset: usize) {
-        if self.smol.is_empty() && self.chonk.is_empty() && offset == 0 {
-            self.zero_prefix += 1;
-        } else if self.chonk.is_empty() {
+        if self.chonk.is_empty() {
             if let Ok(smol) = offset.try_into() {
                 self.smol.push(smol);
             } else {
@@ -162,20 +179,16 @@ impl OffsetList {
     /// Panics if the index is out of bounds, i.e., it is larger or equal to the length.
     #[must_use]
     pub fn index(&self, index: usize) -> usize {
-        if index < self.zero_prefix {
-            0
-        } else if index - self.zero_prefix < self.smol.len() {
-            self.smol[index - self.zero_prefix].try_into().unwrap()
+        if index < self.smol.len() {
+            self.smol[index].try_into().unwrap()
         } else {
-            self.chonk[index - self.zero_prefix - self.smol.len()]
-                .try_into()
-                .unwrap()
+            self.chonk[index - self.smol.len()].try_into().unwrap()
         }
     }
     /// The number of offsets in the list.
     #[must_use]
     pub fn len(&self) -> usize {
-        self.zero_prefix + self.smol.len() + self.chonk.len()
+        self.smol.len() + self.chonk.len()
     }
 
     /// Returns `true` if this list contains no elements.
@@ -295,8 +308,9 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-    use crate::impls::offsets::OffsetOptimized;
     use crate::{CopyOnto, Region, SliceRegion, StringRegion};
+
+    use super::*;
 
     #[test]
     fn test_offset_optimized() {
@@ -310,5 +324,79 @@ mod tests {
         >::default();
         let idx = copy(&mut r, ["abc"]);
         assert_eq!("abc", r.index(idx).get(0))
+    }
+
+    #[test]
+    fn test_offset_optimized_clear() {
+        let mut oo = OffsetOptimized::default();
+        oo.push(0);
+        assert_eq!(oo.len(), 1);
+        oo.clear();
+        assert_eq!(oo.len(), 0);
+        assert!(oo.is_empty());
+        oo.push(9999999999);
+        assert_eq!(oo.len(), 1);
+        oo.clear();
+        assert_eq!(oo.len(), 0);
+    }
+
+    #[test]
+    fn test_offset_optimized_reserve() {
+        let mut oo = OffsetOptimized::default();
+        oo.push(9999999999);
+        assert_eq!(oo.len(), 1);
+        oo.reserve(1);
+    }
+
+    #[test]
+    fn test_offset_optimized_heap_size() {
+        let mut oo = OffsetOptimized::default();
+        oo.push(9999999999);
+        let mut cap = 0;
+        oo.heap_size(|_, ca| {
+            cap += ca;
+        });
+        assert!(cap > 0);
+    }
+
+    #[test]
+    fn test_offset_stride_push() {
+        let mut os = OffsetStride::default();
+        assert_eq!(os.len(), 0);
+        assert!(os.is_empty());
+        assert!(os.push(0));
+        assert_eq!(os.index(0), 0);
+        assert_eq!(os.len(), 1);
+        assert!(!os.is_empty());
+        assert!(os.push(2));
+        assert_eq!(os.len(), 2);
+        assert_eq!(os.index(1), 2);
+        assert!(os.push(4));
+        assert_eq!(os.len(), 3);
+        assert_eq!(os.index(2), 4);
+        assert!(os.push(4));
+        assert_eq!(os.len(), 4);
+        assert_eq!(os.index(3), 4);
+        assert!(os.push(4));
+        assert_eq!(os.len(), 5);
+        assert_eq!(os.index(1), 2);
+        assert_eq!(os.index(4), 4);
+        assert!(!os.push(5));
+        os.clear();
+        assert!(!os.push(1));
+    }
+
+    #[test]
+    fn test_chonk() {
+        let mut ol = OffsetList::default();
+        ol.push(usize::MAX);
+        assert_eq!(usize::MAX, ol.index(0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_offset_stride_index() {
+        let os = OffsetStride::default();
+        let _ = os.index(0);
     }
 }

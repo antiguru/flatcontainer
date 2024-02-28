@@ -170,12 +170,57 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyOnto, Region, StringRegion};
+    use crate::{CopyOnto, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
         let mut r = <StringRegion>::default();
         let index = "abc".copy_onto(&mut r);
         assert_eq!(r.index(index), "abc");
+    }
+
+    #[test]
+    fn test_reserve_items_str() {
+        let mut r = <StringRegion>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::repeat("abc").take(1000));
+
+        let (mut cap, mut cnt) = (0, 0);
+        r.heap_size(|_, c| {
+            cap += c;
+            cnt += 1;
+        });
+
+        assert!(cap > 0);
+        assert!(cnt > 0);
+    }
+
+    #[test]
+    fn test_reserve_items_ref_str() {
+        let mut r = <StringRegion>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::repeat(&"abc").take(1000));
+
+        let (mut cap, mut cnt) = (0, 0);
+        r.heap_size(|_, c| {
+            cap += c;
+            cnt += 1;
+        });
+
+        assert!(cap > 0);
+        assert!(cnt > 0);
+    }
+
+    #[test]
+    fn test_reserve_items_string() {
+        let mut r = <StringRegion>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::repeat(&"abc".to_owned()).take(1000));
+
+        let (mut cap, mut cnt) = (0, 0);
+        r.heap_size(|_, c| {
+            cap += c;
+            cnt += 1;
+        });
+
+        assert!(cap > 0);
+        assert!(cnt > 0);
     }
 }

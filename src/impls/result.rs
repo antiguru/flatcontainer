@@ -136,3 +136,27 @@ where
         ReserveItems::reserve_items(&mut target.errs, items.filter_map(|r| r.as_ref().err()));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{CopyRegion, MirrorRegion, Region, ReserveItems};
+
+    use super::*;
+
+    #[test]
+    fn test_reserve() {
+        let mut r = <ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>::default();
+        ReserveItems::reserve_items(&mut r, [Ok(0), Err(1)].iter());
+    }
+
+    #[test]
+    fn test_heap_size() {
+        let mut r = <ResultRegion<CopyRegion<u8>, CopyRegion<u8>>>::default();
+        ReserveItems::reserve_items(&mut r, [Ok([1; 0]), Err([1; 1])].iter());
+        let mut cap = 0;
+        r.heap_size(|_, ca| {
+            cap += ca;
+        });
+        assert!(cap > 0);
+    }
+}

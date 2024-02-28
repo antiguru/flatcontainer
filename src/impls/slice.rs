@@ -231,7 +231,7 @@ where
         I: Iterator<Item = Self> + Clone,
     {
         target.slices.reserve(items.clone().map(<[T]>::len).sum());
-        ReserveItems::reserve_items(&mut target.inner, items.flat_map(|i| i.iter()));
+        ReserveItems::reserve_items(&mut target.inner, items.flatten());
     }
 }
 
@@ -354,5 +354,64 @@ mod tests {
         let slice = r.index(index);
         assert_eq!(0, slice.len());
         assert!(slice.is_empty());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_get_out_of_bounds() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        let index = [1; 4].copy_onto(&mut r);
+
+        // Offset 4 is out of bounds and expected to panic.
+        let _ = r.index(index).get(4);
+    }
+
+    #[test]
+    fn test_read_slice_debug() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        let index = [1; 4].copy_onto(&mut r);
+
+        assert_eq!("[1, 1, 1, 1]", format!("{:?}", r.index(index)));
+    }
+
+    #[test]
+    fn test_read_slice_clone() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        let index = [1; 4].copy_onto(&mut r);
+
+        assert_eq!("[1, 1, 1, 1]", format!("{:?}", r.index(index).clone()));
+    }
+
+    #[test]
+    fn test_reserve_ref_slice() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once([1; 4].as_slice()));
+        let mut cap = 0;
+        r.heap_size(|_, ca| {
+            cap += ca;
+        });
+        assert!(cap > 0);
+    }
+
+    #[test]
+    fn test_reserve_ref_vec() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(&vec![1; 4]));
+        let mut cap = 0;
+        r.heap_size(|_, ca| {
+            cap += ca;
+        });
+        assert!(cap > 0);
+    }
+
+    #[test]
+    fn test_reserve_ref_array() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
+        let mut cap = 0;
+        r.heap_size(|_, ca| {
+            cap += ca;
+        });
+        assert!(cap > 0);
     }
 }

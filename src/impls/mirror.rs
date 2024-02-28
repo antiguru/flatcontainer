@@ -153,3 +153,16 @@ implement_for!(std::num::Wrapping<i128>);
 implement_for!(std::num::Wrapping<isize>);
 
 implement_for!(std::time::Duration);
+
+#[cfg(test)]
+mod tests {
+    use crate::ReserveItems;
+
+    use super::*;
+
+    #[test]
+    fn test_reserve_regions() {
+        let mut r = MirrorRegion::<u8>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(0));
+    }
+}

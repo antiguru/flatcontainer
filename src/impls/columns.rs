@@ -125,6 +125,11 @@ where
     }
 
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        let size_of_r = std::mem::size_of::<R>();
+        callback(
+            self.inner.len() * size_of_r,
+            self.inner.capacity() * size_of_r,
+        );
         for inner in &self.inner {
             inner.heap_size(&mut callback);
         }
@@ -292,6 +297,52 @@ where
     }
 }
 
+impl<R, Idx, T, const N: usize> CopyOnto<ColumnsRegion<R, Idx>> for [T; N]
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+    T: CopyOnto<R>,
+{
+    fn copy_onto(
+        self,
+        target: &mut ColumnsRegion<R, Idx>,
+    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+        // Ensure all required regions exist.
+        while target.inner.len() < self.len() {
+            target.inner.push(R::default());
+        }
+
+        let iter = self
+            .into_iter()
+            .zip(&mut target.inner)
+            .map(|(value, region)| value.copy_onto(region));
+        CopyIter(iter).copy_onto(&mut target.indices)
+    }
+}
+
+impl<'a, R, Idx, T, const N: usize> CopyOnto<ColumnsRegion<R, Idx>> for &'a [T; N]
+where
+    R: Region<Index = Idx>,
+    Idx: Index,
+    &'a T: CopyOnto<R>,
+{
+    fn copy_onto(
+        self,
+        target: &mut ColumnsRegion<R, Idx>,
+    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+        // Ensure all required regions exist.
+        while target.inner.len() < self.len() {
+            target.inner.push(R::default());
+        }
+
+        let iter = self
+            .iter()
+            .zip(&mut target.inner)
+            .map(|(value, region)| value.copy_onto(region));
+        CopyIter(iter).copy_onto(&mut target.indices)
+    }
+}
+
 impl<R, Idx, T> CopyOnto<ColumnsRegion<R, Idx>> for Vec<T>
 where
     R: Region<Index = Idx>,
@@ -363,10 +414,10 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::columns::ColumnsRegion;
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::CopyIter;
-    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+    use crate::{CopyIter, CopyOnto, CopyRegion, MirrorRegion, Region, StringRegion};
+
+    use super::*;
 
     #[test]
     fn test_matrix() {
@@ -496,6 +547,99 @@ mod tests {
             assert!(row.iter().copied().eq(r.index(index).iter()));
         }
 
+        assert_eq!("1", r.index(indices[1]).get(0));
+        assert_eq!(1, r.index(indices[1]).len());
+        assert!(!r.index(indices[1]).is_empty());
+        assert!(r.index(indices[0]).is_empty());
+
         println!("{r:?}");
+    }
+
+    #[test]
+    fn read_columns_copy_onto() {
+        let data = [[[1]; 4]; 4];
+
+        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        let mut r2 = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+
+        for row in &data {
+            let idx = row.copy_onto(&mut r);
+            let idx2 = r.index(idx).copy_onto(&mut r2);
+            assert!(r.index(idx).iter().eq(r2.index(idx2).iter()));
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_clear() {
+        let data = [[[1]; 4]; 4];
+
+        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+
+        let mut idx = None;
+        for row in &data {
+            idx = Some(row.copy_onto(&mut r));
+        }
+
+        r.clear();
+        r.index(idx.unwrap());
+    }
+
+    #[test]
+    fn copy_reserve_regions() {
+        let data = [[[1]; 4]; 4];
+
+        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+
+        for row in &data {
+            row.copy_onto(&mut r);
+        }
+        for row in data {
+            row.copy_onto(&mut r);
+        }
+
+        let mut r2 = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        r2.reserve_regions(std::iter::once(&r));
+
+        let mut cap = 0;
+        r2.heap_size(|_, c| cap += c);
+        assert!(cap > 0);
+    }
+
+    #[test]
+    fn test_merge_regions() {
+        let data = [
+            vec![],
+            vec!["1"],
+            vec!["2", "3"],
+            vec!["4", "5", "6"],
+            vec!["7", "8"],
+            vec!["9"],
+            vec![],
+        ];
+
+        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+
+        for row in &data {
+            let _ = CopyIter(row.iter()).copy_onto(&mut r);
+        }
+
+        let (mut siz1, mut cap1) = (0, 0);
+        r.heap_size(|s, c| {
+            siz1 += s;
+            cap1 += c;
+        });
+
+        let mut r2 = ColumnsRegion::merge_regions(std::iter::once(&r));
+        for row in &data {
+            let _ = CopyIter(row.iter()).copy_onto(&mut r2);
+        }
+
+        let (mut siz2, mut cap2) = (0, 0);
+        r2.heap_size(|s, c| {
+            siz2 += s;
+            cap2 += c;
+        });
+        assert!(cap2 <= cap1);
     }
 }
