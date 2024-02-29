@@ -1,8 +1,11 @@
 //! A region that stores slices of copy types.
 
+use std::marker::PhantomData;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::impls::storage::Storage;
 use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 
 /// A container for [`Copy`] types.
@@ -24,11 +27,13 @@ use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CopyRegion<T: Copy> {
-    slices: Vec<T>,
+pub struct CopyRegion<T: Copy, S: Storage<T> = Vec<T>> {
+    slices: S,
+    offset: usize,
+    _marker: PhantomData<T>,
 }
 
-impl<T: Copy> Region for CopyRegion<T> {
+impl<T: Copy, S: Storage<T>> Region for CopyRegion<T, S> {
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
@@ -37,13 +42,15 @@ impl<T: Copy> Region for CopyRegion<T> {
         Self: 'a,
     {
         Self {
-            slices: Vec::with_capacity(regions.map(|r| r.slices.len()).sum()),
+            slices: S::merge_regions(regions.map(|r| &r.slices)),
+            offset: 0,
+            _marker: PhantomData,
         }
     }
 
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
-        &self.slices[start..end]
+        self.slices.index(start, end)
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -51,7 +58,7 @@ impl<T: Copy> Region for CopyRegion<T> {
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
     {
-        self.slices.reserve(regions.map(|r| r.slices.len()).sum());
+        self.slices.reserve_regions(regions.map(|r| &r.slices));
     }
 
     #[inline]
@@ -59,57 +66,55 @@ impl<T: Copy> Region for CopyRegion<T> {
         self.slices.clear();
     }
 
-    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        let size_of_t = std::mem::size_of::<T>();
-        callback(
-            self.slices.len() * size_of_t,
-            self.slices.capacity() * size_of_t,
-        );
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.slices.heap_size(callback);
     }
 }
 
-impl<T: Copy> Default for CopyRegion<T> {
+impl<T: Copy, S: Storage<T>> Default for CopyRegion<T, S> {
     fn default() -> Self {
         Self {
-            slices: Vec::default(),
+            slices: S::default(),
+            offset: 0,
+            _marker: PhantomData,
         }
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for [T; N]
+impl<T, S: Storage<T>, const N: usize> CopyOnto<CopyRegion<T, S>> for [T; N]
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
         (&self).copy_onto(target)
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &[T; N]
+impl<T, S: Storage<T>, const N: usize> CopyOnto<CopyRegion<T, S>> for &[T; N]
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
-        let start = target.slices.len();
-        target.slices.extend_from_slice(self);
-        (start, target.slices.len())
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
+        let start = target.offset;
+        target.offset = target.slices.extend_from_slice(self);
+        (start, target.offset)
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &&[T; N]
+impl<T, S: Storage<T>, const N: usize> CopyOnto<CopyRegion<T, S>> for &&[T; N]
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
         (*self).copy_onto(target)
     }
 }
 
-impl<T: Copy, const N: usize> ReserveItems<CopyRegion<T>> for &[T; N] {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T: Copy, S: Storage<T>, const N: usize> ReserveItems<CopyRegion<T, S>> for &[T; N] {
+    fn reserve_items<I>(target: &mut CopyRegion<T, S>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -117,30 +122,30 @@ impl<T: Copy, const N: usize> ReserveItems<CopyRegion<T>> for &[T; N] {
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &[T]
+impl<T, S: Storage<T>> CopyOnto<CopyRegion<T, S>> for &[T]
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
-        let start = target.slices.len();
-        target.slices.extend_from_slice(self);
-        (start, target.slices.len())
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
+        let start = target.offset;
+        target.offset = target.slices.extend_from_slice(self);
+        (start, target.offset)
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &&[T]
+impl<T, S: Storage<T>> CopyOnto<CopyRegion<T, S>> for &&[T]
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
         (*self).copy_onto(target)
     }
 }
 
-impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T: Copy, S: Storage<T>> ReserveItems<CopyRegion<T, S>> for &[T] {
+    fn reserve_items<I>(target: &mut CopyRegion<T, S>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -148,18 +153,18 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &Vec<T>
+impl<T, S: Storage<T>> CopyOnto<CopyRegion<T, S>> for &Vec<T>
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
         self.as_slice().copy_onto(target)
     }
 }
 
-impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T: Copy, S: Storage<T>> ReserveItems<CopyRegion<T, S>> for &Vec<T> {
+    fn reserve_items<I>(target: &mut CopyRegion<T, S>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -167,20 +172,22 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
     }
 }
 
-impl<T, I: IntoIterator<Item = T>> CopyOnto<CopyRegion<T>> for CopyIter<I>
+impl<T, S: Storage<T>, I: IntoIterator<Item = T>> CopyOnto<CopyRegion<T, S>> for CopyIter<I>
 where
     T: Copy,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
-        let start = target.slices.len();
-        target.slices.extend(self.0);
-        (start, target.slices.len())
+    fn copy_onto(self, target: &mut CopyRegion<T, S>) -> <CopyRegion<T, S> as Region>::Index {
+        let start = target.offset;
+        target.offset = target.slices.extend(self.0);
+        (start, target.offset)
     }
 }
 
-impl<T: Copy, J: IntoIterator<Item = T>> ReserveItems<CopyRegion<T>> for CopyIter<J> {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T: Copy, S: Storage<T>, J: IntoIterator<Item = T>> ReserveItems<CopyRegion<T, S>>
+    for CopyIter<J>
+{
+    fn reserve_items<I>(target: &mut CopyRegion<T, S>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
