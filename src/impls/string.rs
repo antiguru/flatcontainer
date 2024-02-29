@@ -3,12 +3,12 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::slice_copy::CopyRegion;
+use crate::impls::slice_copy::OwnedRegion;
 use crate::{Containerized, CopyOnto, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
-/// Delegates to a region `R` to store `u8` slices. By default, it uses a [`CopyRegion`], but a
+/// Delegates to a region `R` to store `u8` slices. By default, it uses a [`OwnedRegion`], but a
 /// different region can be provided, as long as it absorbs and reads items as `&[u8]`.
 ///
 /// Note that all implementations of `CopyOnto<StringRegion>` must only accept valid utf-8 data
@@ -18,7 +18,7 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, CopyRegion, Region, StringRegion};
+/// use flatcontainer::{Containerized, CopyOnto, OwnedRegion, Region, StringRegion};
 /// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -32,7 +32,7 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 /// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StringRegion<R = CopyRegion<u8>>
+pub struct StringRegion<R = OwnedRegion<u8>>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {

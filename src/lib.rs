@@ -13,7 +13,7 @@ pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
-pub use impls::slice_copy::CopyRegion;
+pub use impls::slice_copy::OwnedRegion;
 pub use impls::string::StringRegion;
 
 /// An index into a region. Automatically implemented for relevant types.
@@ -604,16 +604,16 @@ mod tests {
         test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>(vec![("a",)]);
         test_copy::<_, SliceRegion<TupleARegion<StringRegion>>>(&vec![("a",)]);
 
-        test_copy::<_, CopyRegion<_>>([0u8].as_slice());
-        test_copy::<_, CopyRegion<_>>(&[0u8].as_slice());
+        test_copy::<_, OwnedRegion<_>>([0u8].as_slice());
+        test_copy::<_, OwnedRegion<_>>(&[0u8].as_slice());
 
         test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
         test_copy::<_, <(u8, u8) as Containerized>::Region>(&(1, 2));
 
-        test_copy::<_, ConsecutiveOffsetPairs<CopyRegion<_>>>([1, 2, 3].as_slice());
+        test_copy::<_, ConsecutiveOffsetPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
 
-        test_copy::<_, CollapseSequence<CopyRegion<_>>>([1, 2, 3].as_slice());
-        test_copy::<_, CollapseSequence<CopyRegion<_>>>(&[1, 2, 3]);
+        test_copy::<_, CollapseSequence<OwnedRegion<_>>>([1, 2, 3].as_slice());
+        test_copy::<_, CollapseSequence<OwnedRegion<_>>>(&[1, 2, 3]);
 
         test_copy::<_, OptionRegion<StringRegion>>(Some("abc"));
         test_copy::<_, OptionRegion<StringRegion>>(&Some("abc"));

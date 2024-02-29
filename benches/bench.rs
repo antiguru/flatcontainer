@@ -8,7 +8,7 @@ use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs
 use flatcontainer::impls::offsets::OffsetOptimized;
 use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
-    ColumnsRegion, Containerized, CopyOnto, CopyRegion, FlatStack, MirrorRegion, Region,
+    ColumnsRegion, Containerized, CopyOnto, FlatStack, MirrorRegion, OwnedRegion, Region,
     ReserveItems, SliceRegion, StringRegion,
 };
 use test::Bencher;
@@ -58,27 +58,27 @@ fn vec_u_vn_s_copy(bencher: &mut Bencher) {
 
 #[bench]
 fn empty_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec![(); 1024]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec![(); 1024]);
 }
 #[bench]
 fn u64_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec![0u64; 1024]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec![0u64; 1024]);
 }
 #[bench]
 fn u32x2_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec![(0u32, 0u32); 1024]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec![(0u32, 0u32); 1024]);
 }
 #[bench]
 fn u8_u64_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec![(0u8, 0u64); 512]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec![(0u8, 0u64); 512]);
 }
 #[bench]
 fn str10_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec!["grawwwwrr!"; 1024]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec!["grawwwwrr!"; 1024]);
 }
 #[bench]
 fn str100_copy_region(bencher: &mut Bencher) {
-    _bench_copy_region::<CopyRegion<_>, _>(bencher, vec!["grawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrr!!!!!!!!!grawwwwrr!"; 1024]);
+    _bench_copy_region::<OwnedRegion<_>, _>(bencher, vec!["grawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrr!!!!!!!!!grawwwwrr!"; 1024]);
 }
 #[bench]
 fn string10_copy_region(bencher: &mut Bencher) {
@@ -108,7 +108,7 @@ fn vec_u_s_copy_region(bencher: &mut Bencher) {
 #[bench]
 fn vec_u_vn_s_copy_region(bencher: &mut Bencher) {
     _bench_copy_region::<
-        SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, CopyRegion<_>, StringRegion>>>,
+        SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, OwnedRegion<_>, StringRegion>>>,
         _,
     >(
         bencher,
@@ -122,7 +122,7 @@ fn vec_u_vn_s_copy_region_column(bencher: &mut Bencher) {
             ColumnsRegion<
                 TupleABCRegion<
                     MirrorRegion<_>,
-                    CollapseSequence<CopyRegion<_>>,
+                    CollapseSequence<OwnedRegion<_>>,
                     CollapseSequence<StringRegion>,
                 >,
                 _,

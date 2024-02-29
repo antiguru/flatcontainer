@@ -105,7 +105,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyRegion, MirrorRegion, Region, ReserveItems};
+    use crate::{MirrorRegion, OwnedRegion, Region, ReserveItems};
 
     use super::*;
 
@@ -117,7 +117,7 @@ mod tests {
 
     #[test]
     fn test_heap_size() {
-        let mut r = <OptionRegion<CopyRegion<u8>>>::default();
+        let mut r = <OptionRegion<OwnedRegion<u8>>>::default();
         ReserveItems::reserve_items(&mut r, [Some([1; 1]), None].iter());
         let mut cap = 0;
         r.heap_size(|_, ca| {
