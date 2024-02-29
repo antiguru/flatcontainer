@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::CopyIter;
-use crate::{CopyOnto, CopyRegion, Index, Region};
+use crate::{CopyOnto, CopyRegion, Region};
 
 /// A region that can store a variable number of elements per row.
 ///
@@ -35,7 +35,7 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 ///     vec![],
 /// ];
 ///
-/// let mut r = <ColumnsRegion<ConsecutiveOffsetPairs<StringRegion>, _>>::default();
+/// let mut r = <ColumnsRegion<ConsecutiveOffsetPairs<StringRegion>>>::default();
 ///
 /// let mut indices = Vec::with_capacity(data.len());
 ///
@@ -53,27 +53,25 @@ use crate::{CopyOnto, CopyRegion, Index, Region};
 #[cfg_attr(
     feature = "serde",
     serde(
-        bound = "R: Serialize + for<'a> Deserialize<'a>, Idx: Serialize + for<'a> Deserialize<'a>"
+        bound = "R: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
     )
 )]
-pub struct ColumnsRegion<R, Idx>
+pub struct ColumnsRegion<R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
-    /// Indices to address rows in `inner`. For each row, we remeber
+    /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
-    indices: ConsecutiveOffsetPairs<CopyRegion<Idx>, OffsetOptimized>,
+    indices: ConsecutiveOffsetPairs<CopyRegion<R::Index>, OffsetOptimized>,
     /// Storage for columns.
     inner: Vec<R>,
 }
 
-impl<R, Idx> Region for ColumnsRegion<R, Idx>
+impl<R> Region for ColumnsRegion<R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
-    type ReadItem<'a> = ReadColumns<'a, R, Idx> where Self: 'a;
+    type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
     type Index = usize;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -137,10 +135,9 @@ where
     }
 }
 
-impl<R, Idx> Default for ColumnsRegion<R, Idx>
+impl<R> Default for ColumnsRegion<R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     fn default() -> Self {
         Self {
@@ -151,53 +148,44 @@ where
 }
 
 /// Read the values of a row.
-pub struct ReadColumns<'a, R, Idx>
+pub struct ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     /// Storage for columns.
     columns: &'a [R],
     /// Indices to retrieve values from columns.
-    index: &'a [Idx],
+    index: &'a [R::Index],
 }
 
-impl<'a, R, Idx> Clone for ReadColumns<'a, R, Idx>
+impl<'a, R> Clone for ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, R, Idx> Copy for ReadColumns<'a, R, Idx>
-where
-    R: Region<Index = Idx>,
-    Idx: Index,
-{
-}
+impl<'a, R> Copy for ReadColumns<'a, R> where R: Region {}
 
-impl<'a, R, Idx> Debug for ReadColumns<'a, R, Idx>
+impl<'a, R> Debug for ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
+    R: Region,
     R::ReadItem<'a>: Debug,
-    Idx: Index,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self).finish()
     }
 }
 
-impl<'a, R, Idx> ReadColumns<'a, R, Idx>
+impl<'a, R> ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     /// Iterate the individual values of a row.
     #[must_use]
-    pub fn iter(&'a self) -> ReadColumnsIter<'a, R, Idx> {
+    pub fn iter(&'a self) -> ReadColumnsIter<'a, R> {
         self.into_iter()
     }
 
@@ -220,13 +208,12 @@ where
     }
 }
 
-impl<'a, R, Idx> IntoIterator for &ReadColumns<'a, R, Idx>
+impl<'a, R> IntoIterator for &ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     type Item = R::ReadItem<'a>;
-    type IntoIter = ReadColumnsIter<'a, R, Idx>;
+    type IntoIter = ReadColumnsIter<'a, R>;
 
     fn into_iter(self) -> Self::IntoIter {
         ReadColumnsIter {
@@ -236,14 +223,13 @@ where
 }
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIter<'a, R, Idx> {
-    iter: std::iter::Zip<std::slice::Iter<'a, Idx>, std::slice::Iter<'a, R>>,
+pub struct ReadColumnsIter<'a, R: Region> {
+    iter: std::iter::Zip<std::slice::Iter<'a, R::Index>, std::slice::Iter<'a, R>>,
 }
 
-impl<'a, R, Idx> Iterator for ReadColumnsIter<'a, R, Idx>
+impl<'a, R> Iterator for ReadColumnsIter<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
     type Item = R::ReadItem<'a>;
 
@@ -252,15 +238,11 @@ where
     }
 }
 
-impl<'a, R, Idx> CopyOnto<ColumnsRegion<R, Idx>> for ReadColumns<'a, R, Idx>
+impl<'a, R> CopyOnto<ColumnsRegion<R>> for ReadColumns<'a, R>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -274,16 +256,12 @@ where
     }
 }
 
-impl<'a, R, Idx, T> CopyOnto<ColumnsRegion<R, Idx>> for &'a [T]
+impl<'a, R, T> CopyOnto<ColumnsRegion<R>> for &'a [T]
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     &'a T: CopyOnto<R>,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -297,16 +275,12 @@ where
     }
 }
 
-impl<R, Idx, T, const N: usize> CopyOnto<ColumnsRegion<R, Idx>> for [T; N]
+impl<R, T, const N: usize> CopyOnto<ColumnsRegion<R>> for [T; N]
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     T: CopyOnto<R>,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -320,16 +294,12 @@ where
     }
 }
 
-impl<'a, R, Idx, T, const N: usize> CopyOnto<ColumnsRegion<R, Idx>> for &'a [T; N]
+impl<'a, R, T, const N: usize> CopyOnto<ColumnsRegion<R>> for &'a [T; N]
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     &'a T: CopyOnto<R>,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -343,16 +313,12 @@ where
     }
 }
 
-impl<R, Idx, T> CopyOnto<ColumnsRegion<R, Idx>> for Vec<T>
+impl<R, T> CopyOnto<ColumnsRegion<R>> for Vec<T>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     T: CopyOnto<R>,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -366,16 +332,12 @@ where
     }
 }
 
-impl<'a, R, Idx, T> CopyOnto<ColumnsRegion<R, Idx>> for &'a Vec<T>
+impl<'a, R, T> CopyOnto<ColumnsRegion<R>> for &'a Vec<T>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     &'a T: CopyOnto<R>,
 {
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
         while target.inner.len() < self.len() {
             target.inner.push(R::default());
@@ -389,18 +351,14 @@ where
     }
 }
 
-impl<R, Idx, T, I> CopyOnto<ColumnsRegion<R, Idx>> for CopyIter<I>
+impl<R, T, I> CopyOnto<ColumnsRegion<R>> for CopyIter<I>
 where
-    R: Region<Index = Idx>,
-    Idx: Index,
+    R: Region,
     T: CopyOnto<R>,
     I: IntoIterator<Item = T>,
 {
     #[inline]
-    fn copy_onto(
-        self,
-        target: &mut ColumnsRegion<R, Idx>,
-    ) -> <ColumnsRegion<R, Idx> as Region>::Index {
+    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
         let iter = self.0.into_iter().enumerate().map(|(index, value)| {
             // Ensure all required regions exist.
             if target.inner.len() <= index {
@@ -423,7 +381,7 @@ mod tests {
     fn test_matrix() {
         let data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
 
-        let mut r = ColumnsRegion::<MirrorRegion<_>, _>::default();
+        let mut r = ColumnsRegion::<MirrorRegion<_>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -449,7 +407,7 @@ mod tests {
             [].as_slice(),
         ];
 
-        let mut r = ColumnsRegion::<MirrorRegion<_>, _>::default();
+        let mut r = ColumnsRegion::<MirrorRegion<_>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -478,7 +436,7 @@ mod tests {
         ];
 
         let mut r =
-            ColumnsRegion::<CollapseSequence<ConsecutiveOffsetPairs<StringRegion>>, _>::default();
+            ColumnsRegion::<CollapseSequence<ConsecutiveOffsetPairs<StringRegion>>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -506,7 +464,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -534,7 +492,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -559,8 +517,8 @@ mod tests {
     fn read_columns_copy_onto() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
-        let mut r2 = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
+        let mut r2 = <ColumnsRegion<CopyRegion<u8>>>::default();
 
         for row in &data {
             let idx = row.copy_onto(&mut r);
@@ -574,7 +532,7 @@ mod tests {
     fn test_clear() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
 
         let mut idx = None;
         for row in &data {
@@ -589,7 +547,7 @@ mod tests {
     fn copy_reserve_regions() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
 
         for row in &data {
             row.copy_onto(&mut r);
@@ -598,7 +556,7 @@ mod tests {
             row.copy_onto(&mut r);
         }
 
-        let mut r2 = <ColumnsRegion<CopyRegion<u8>, _>>::default();
+        let mut r2 = <ColumnsRegion<CopyRegion<u8>>>::default();
         r2.reserve_regions(std::iter::once(&r));
 
         let mut cap = 0;
@@ -618,7 +576,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>, _>::default();
+        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
 
         for row in &data {
             let _ = CopyIter(row.iter()).copy_onto(&mut r);
