@@ -54,6 +54,28 @@ pub struct FixedColumnsRegion<R, O> {
     inner: Vec<R>,
 }
 
+impl<R: Default, O: Default> FixedColumnsRegion<R, O> {
+    /// Ensures that the region has a width of exactly `columns`, either
+    /// by creating sufficient columns, or by interrupting the program.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the region has a different number of columns.
+    fn ensure_columns(&mut self, columns: usize) {
+        // Ensure all required regions exist.
+        assert!(
+            self.inner.is_empty() || columns == self.inner.len(),
+            "All rows in a fixed columns region must have equal length, expected {} but is {}.",
+            columns,
+            self.inner.len()
+        );
+        while self.inner.len() < columns {
+            self.inner.push(R::default());
+            self.offsets.push(O::default());
+        }
+    }
+}
+
 impl<R, O> Region for FixedColumnsRegion<R, O>
 where
     R: Region,
@@ -225,24 +247,17 @@ where
     }
 }
 
-impl<'a, R, O> CopyOnto<FixedColumnsRegion<R, O>> for ReadColumns<'a, R, O>
+impl<R, O> CopyOnto<FixedColumnsRegion<R, O>> for ReadColumns<'_, R, O>
 where
     R: Region,
     O: OffsetContainer<R::Index>,
+    for<'a> R::ReadItem<'a>: CopyOnto<R>,
 {
     fn copy_onto(
         self,
         target: &mut FixedColumnsRegion<R, O>,
     ) -> <FixedColumnsRegion<R, O> as Region>::Index {
-        // Ensure all required regions exist.
-        debug_assert!(
-            target.inner.is_empty() || self.len() == target.inner.len(),
-            "All elements in a fixed columns region must have equal length."
-        );
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
-            target.offsets.push(O::default());
-        }
+        target.ensure_columns(self.len());
         for ((item, region), offsets) in self
             .iter()
             .zip(target.inner.iter_mut())
@@ -265,15 +280,7 @@ where
         self,
         target: &mut FixedColumnsRegion<R, O>,
     ) -> <FixedColumnsRegion<R, O> as Region>::Index {
-        // Ensure all required regions exist.
-        debug_assert!(
-            target.inner.is_empty() || self.len() == target.inner.len(),
-            "All elements in a fixed columns region must have equal length."
-        );
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
-            target.offsets.push(O::default());
-        }
+        target.ensure_columns(self.len());
         for ((item, region), offsets) in self
             .iter()
             .zip(target.inner.iter_mut())
@@ -296,15 +303,7 @@ where
         self,
         target: &mut FixedColumnsRegion<R, O>,
     ) -> <FixedColumnsRegion<R, O> as Region>::Index {
-        // Ensure all required regions exist.
-        debug_assert!(
-            target.inner.is_empty() || self.len() == target.inner.len(),
-            "All elements in a fixed columns region must have equal length."
-        );
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
-            target.offsets.push(O::default());
-        }
+        target.ensure_columns(self.len());
         for ((item, region), offsets) in self
             .into_iter()
             .zip(target.inner.iter_mut())
@@ -327,15 +326,7 @@ where
         self,
         target: &mut FixedColumnsRegion<R, O>,
     ) -> <FixedColumnsRegion<R, O> as Region>::Index {
-        // Ensure all required regions exist.
-        debug_assert!(
-            target.inner.is_empty() || self.len() == target.inner.len(),
-            "All elements in a fixed columns region must have equal length."
-        );
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
-            target.offsets.push(O::default());
-        }
+        target.ensure_columns(self.len());
         for (index, offsets) in self
             .iter()
             .zip(target.inner.iter_mut())
@@ -360,22 +351,23 @@ where
         self,
         target: &mut FixedColumnsRegion<R, O>,
     ) -> <FixedColumnsRegion<R, O> as Region>::Index {
-        let check_length = !target.inner.is_empty();
-        let mut len = 0;
-        for (column, value) in self.0.into_iter().enumerate() {
-            // Ensure all required regions exist.
-            if check_length {
-                debug_assert!(column < target.inner.len())
-            } else {
-                debug_assert!(target.inner.len() <= column);
+        if target.inner.is_empty() {
+            // Writing the first row, which determines the number of columns.
+            for (column, value) in self.0.into_iter().enumerate() {
                 target.inner.push(R::default());
                 target.offsets.push(O::default());
+                let index = value.copy_onto(&mut target.inner[column]);
+                target.offsets[column].push(index);
             }
-            let index = value.copy_onto(&mut target.inner[column]);
-            target.offsets[column].push(index);
-            len += 1;
+        } else {
+            let mut columns = 0;
+            for (column, value) in self.0.into_iter().enumerate() {
+                let index = value.copy_onto(&mut target.inner[column]);
+                target.offsets[column].push(index);
+                columns += 1;
+            }
+            target.ensure_columns(columns);
         }
-        debug_assert_eq!(len, target.inner.len());
         target.offsets.first().map(|o| o.len() - 1).unwrap_or(0)
     }
 }
@@ -383,10 +375,10 @@ where
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::impls::fixed_columns::FixedColumnsRegion;
     use crate::impls::offsets::OffsetOptimized;
-    use crate::CopyIter;
-    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+    use crate::{CopyIter, CopyOnto, MirrorRegion, Region, StringRegion};
+
+    use super::*;
 
     #[test]
     fn test_matrix() {
