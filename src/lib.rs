@@ -648,4 +648,25 @@ mod tests {
         let _read_item3 = read_item;
         assert_eq!(vec![1, 2, 3], read_item.into_iter().collect::<Vec<_>>());
     }
+
+    #[test]
+    fn nested_slice_copy() {
+        let mut c = FlatStack::default_impl::<[[[[[u8; 1]; 1]; 1]; 1]; 1]>();
+
+        c.copy([[[[[1]]]]]);
+        c.copy(&[[[[[1]]]]]);
+        c.copy(&[[[[[&1]]]]]);
+        c.copy([[[[[&1]]]]]);
+        c.copy([[&[[[&1]]]]]);
+        c.copy([[[[[1]]; 1]; 1]; 1]);
+        c.copy(&[[[[[1; 1]; 1]; 1]; 1]; 1]);
+        c.copy(&[[[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.copy([[[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.copy([[&[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.copy([[vec![[[1; 1]; 1]; 1]; 1]; 1]);
+        c.copy(&[[vec![[[1; 1]; 1]; 1]; 1]; 1]);
+        c.copy(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.copy([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
+        c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+    }
 }
