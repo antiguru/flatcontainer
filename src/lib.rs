@@ -300,6 +300,7 @@ impl<R: Region> Clone for FlatStack<R> {
 /// This only exists to avoid blanket implementations that might conflict with more specific
 /// implementations offered by some regions.
 #[repr(transparent)]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct CopyIter<I>(pub I);
 
 #[cfg(test)]
@@ -520,6 +521,16 @@ mod tests {
 
             let mut cc = c.clone();
             cc.copy(c.get(0));
+
+            c.clear();
+
+            let mut r = R::default();
+            cc.get(0).copy_onto(&mut r);
+
+            c.reserve_regions(std::iter::once(&r));
+
+            let mut c = FlatStack::merge_capacity(std::iter::once(&c));
+            c.copy(cc.get(0));
         }
 
         test_copy::<_, StringRegion>(&"a".to_string());
@@ -575,6 +586,8 @@ mod tests {
 
         test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Ok(0));
         test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Ok(0));
+        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Err(0));
+        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Err(0));
 
         test_copy::<_, SliceRegion<MirrorRegion<u8>>>([0u8].as_slice());
         test_copy::<_, SliceRegion<MirrorRegion<u8>>>(vec![0u8]);

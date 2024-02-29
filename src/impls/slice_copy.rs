@@ -189,3 +189,45 @@ impl<T: Copy, J: IntoIterator<Item = T>> ReserveItems<CopyRegion<T>> for CopyIte
             .reserve(items.flat_map(|i| i.0.into_iter()).count());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{CopyIter, CopyOnto, Region, ReserveItems};
+
+    use super::*;
+
+    #[test]
+    fn test_copy_array() {
+        let mut r = <CopyRegion<u8>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
+        let index = [1; 4].copy_onto(&mut r);
+        assert_eq!([1, 1, 1, 1], r.index(index));
+    }
+
+    #[test]
+    fn test_copy_ref_ref_array() {
+        let mut r = <CopyRegion<u8>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
+        let index = (&&[1; 4]).copy_onto(&mut r);
+        assert_eq!([1, 1, 1, 1], r.index(index));
+    }
+
+    #[test]
+    fn test_copy_vec() {
+        let mut r = <CopyRegion<u8>>::default();
+        ReserveItems::reserve_items(&mut r, std::iter::once(&vec![1; 4]));
+        let index = (&vec![1; 4]).copy_onto(&mut r);
+        assert_eq!([1, 1, 1, 1], r.index(index));
+    }
+
+    #[test]
+    fn test_copy_iter() {
+        let mut r = <CopyRegion<u8>>::default();
+        ReserveItems::reserve_items(
+            &mut r,
+            std::iter::once(CopyIter(std::iter::repeat(1).take(4))),
+        );
+        let index = CopyIter(std::iter::repeat(1).take(4)).copy_onto(&mut r);
+        assert_eq!([1, 1, 1, 1], r.index(index));
+    }
+}

@@ -200,4 +200,25 @@ mod tests {
         let index = (&("abc", 2, 3)).copy_onto(&mut r);
         assert_eq!(t, r.index(index));
     }
+
+    #[test]
+    fn test_heap_size() {
+        let t = ("abc", 2, 3);
+        let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
+
+        let _ = t.copy_onto(&mut r);
+
+        let (mut size, mut cap, mut cnt) = (0, 0, 0);
+        r.heap_size(|siz, ca| {
+            size += siz;
+            cap += ca;
+            cnt += 1;
+        });
+
+        println!("size {size} cap {cap} cnt {cnt}");
+
+        assert!(size > 0);
+        assert!(cap > 0);
+        assert!(cnt > 0);
+    }
 }

@@ -440,4 +440,53 @@ mod tests {
         println!("new container with merged stats after inserts:");
         merged.codec.report();
     }
+
+    #[test]
+    fn test_heap_size() {
+        let mut regions = Vec::new();
+        for _ in 0..8 {
+            regions.push(CodecRegion::<DictionaryCodec>::default());
+        }
+        for _ in 0..1000 {
+            for r in &mut regions {
+                "abcdef".as_bytes().copy_onto(r);
+                "defghi".as_bytes().copy_onto(r);
+            }
+        }
+
+        let mut merged = CodecRegion::merge_regions(regions.iter());
+
+        for _ in 0..2000 {
+            let index = "abcdef".as_bytes().copy_onto(&mut merged);
+            assert_eq!("abcdef".as_bytes(), merged.index(index));
+            let index = "defghi".as_bytes().copy_onto(&mut merged);
+            assert_eq!("defghi".as_bytes(), merged.index(index));
+        }
+
+        let (mut size, mut cap, mut cnt) = (0, 0, 0);
+        merged.heap_size(|siz, ca| {
+            size += siz;
+            cap += ca;
+            cnt += 1;
+        });
+
+        assert!(cnt > 0);
+
+        let mut merged2 = CodecRegion::merge_regions(std::iter::once(&merged));
+
+        for _ in 0..2000 {
+            let index = "abcdef".as_bytes().copy_onto(&mut merged2);
+            assert_eq!("abcdef".as_bytes(), merged2.index(index));
+            let index = "defghi".as_bytes().copy_onto(&mut merged2);
+            assert_eq!("defghi".as_bytes(), merged2.index(index));
+        }
+
+        let (mut size, mut cap, mut cnt) = (0, 0, 0);
+        merged2.heap_size(|siz, ca| {
+            size += siz;
+            cap += ca;
+            cnt += 1;
+        });
+        assert!(cnt > 0);
+    }
 }
