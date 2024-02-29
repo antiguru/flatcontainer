@@ -41,7 +41,7 @@ impl<T: Copy> Index for T {}
 /// Implement the [`CopyOnto`] trait for all types that can be copied into a region.
 pub trait Region: Default {
     /// The type of the data that one gets out of the container.
-    type ReadItem<'a>: CopyOnto<Self>
+    type ReadItem<'a>
     where
         Self: 'a;
 
@@ -287,7 +287,10 @@ impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
     }
 }
 
-impl<R: Region> Clone for FlatStack<R> {
+impl<R: Region> Clone for FlatStack<R>
+where
+    for<'a> R::ReadItem<'a>: CopyOnto<R>,
+{
     fn clone(&self) -> Self {
         let mut clone = Self::merge_capacity(std::iter::once(self));
         clone.extend(self.iter());
@@ -514,7 +517,7 @@ mod tests {
         where
             T: CopyOnto<R>,
             // Make sure that types are debug, even if we don't use this in the test.
-            for<'a> R::ReadItem<'a>: Debug,
+            for<'a> R::ReadItem<'a>: Debug + CopyOnto<R>,
         {
             let mut c = FlatStack::default();
             c.copy(t);

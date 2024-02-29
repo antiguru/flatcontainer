@@ -36,10 +36,7 @@ impl<R: Region> Default for CollapseSequence<R> {
     }
 }
 
-impl<R: Region> Region for CollapseSequence<R>
-where
-    for<'a, 'b> R::ReadItem<'a>: PartialEq<R::ReadItem<'b>>,
-{
+impl<R: Region> Region for CollapseSequence<R> {
     type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
     type Index = R::Index;
 
@@ -78,7 +75,6 @@ where
 impl<R: Region, T: CopyOnto<R>> CopyOnto<CollapseSequence<R>> for T
 where
     for<'a> T: PartialEq<R::ReadItem<'a>>,
-    for<'a, 'b> R::ReadItem<'a>: PartialEq<R::ReadItem<'b>>,
 {
     fn copy_onto(self, target: &mut CollapseSequence<R>) -> <CollapseSequence<R> as Region>::Index {
         if let Some(last_index) = target.last_index {
