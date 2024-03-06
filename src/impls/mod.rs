@@ -2,8 +2,10 @@
 
 pub mod codec;
 pub mod columns;
+pub mod consolidate;
 pub mod deduplicate;
 pub mod mirror;
+pub mod negate;
 pub mod offsets;
 pub mod option;
 pub mod result;

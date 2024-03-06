@@ -136,6 +136,13 @@ impl<R: Region> FlatStack<R> {
         Self::default()
     }
 
+    /// Default implementation based on the preference of type `T`.
+    #[inline]
+    #[must_use]
+    pub fn default_val<T: Containerized<Region = R>>(_: &T) -> Self {
+        Self::default()
+    }
+
     /// Returns a flat stack that can absorb `capacity` indices without reallocation.
     ///
     /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
@@ -230,6 +237,19 @@ impl<R: Region> FlatStack<R> {
         use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
         self.indices.heap_size(callback);
+    }
+
+    /// Convert the flat stack into its parts.
+    pub fn into_parts(self) -> (R, Vec<R::Index>) {
+        (self.region, self.indices)
+    }
+
+    /// Construct a flat stack from its parts.
+    ///
+    /// The method performs no validation, which means the parameters must
+    /// be correct: The region must contain an element for each index.
+    pub fn from_parts(region: R, indices: Vec<R::Index>) -> Self {
+        Self { region, indices }
     }
 }
 
@@ -647,5 +667,10 @@ mod tests {
         is_clone(&read_item);
         let _read_item3 = read_item;
         assert_eq!(vec![1, 2, 3], read_item.into_iter().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn flat_stack_default_val() {
+        let _ = FlatStack::default_val(&([1u8], [1u8], 0_i64));
     }
 }
