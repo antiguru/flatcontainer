@@ -99,8 +99,8 @@ where
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
 /// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-/// use flatcontainer::{CopyOnto, CopyRegion, Region, StringRegion};
-/// let mut r = <ConsecutiveOffsetPairs<CopyRegion<u8>>>::default();
+/// use flatcontainer::{CopyOnto, OwnedRegion, Region, StringRegion};
+/// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
 /// let index: usize = b"abc"[..].copy_onto(&mut r);
 /// assert_eq!(b"abc", r.index(index));

@@ -5,13 +5,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 
-/// A container for [`Copy`] types.
+/// A container for owned types.
+///
+/// The container can absorb any type, and stores an owned version of the type, similarly to what
+/// vectors do. We recommend using this container for copy types, but there is no restriction in
+/// the implementation, and in fact it can correctly store owned values, although any data owned
+/// by `T` is regular heap-allocated data, and not contained in regions.
 ///
 /// # Examples
 ///
 /// ```
-/// use flatcontainer::{CopyOnto, CopyRegion, Region};
-/// let mut r = <CopyRegion<_>>::default();
+/// use flatcontainer::{CopyOnto, OwnedRegion, Region};
+/// let mut r = <OwnedRegion<_>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
 /// let panagram_de = "Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich";
@@ -24,11 +29,11 @@ use crate::{CopyIter, CopyOnto, Region, ReserveItems};
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CopyRegion<T: Copy> {
+pub struct OwnedRegion<T> {
     slices: Vec<T>,
 }
 
-impl<T: Copy> Region for CopyRegion<T> {
+impl<T> Region for OwnedRegion<T> {
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
@@ -68,7 +73,7 @@ impl<T: Copy> Region for CopyRegion<T> {
     }
 }
 
-impl<T: Copy> Default for CopyRegion<T> {
+impl<T> Default for OwnedRegion<T> {
     fn default() -> Self {
         Self {
             slices: Vec::default(),
@@ -76,40 +81,33 @@ impl<T: Copy> Default for CopyRegion<T> {
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for [T; N]
-where
-    T: Copy,
-{
+impl<T, const N: usize> CopyOnto<OwnedRegion<T>> for [T; N] {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
-        (&self).copy_onto(target)
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
+        let start = target.slices.len();
+        target.slices.extend(self);
+        (start, target.slices.len())
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &[T; N]
-where
-    T: Copy,
-{
+impl<T: Clone, const N: usize> CopyOnto<OwnedRegion<T>> for &[T; N] {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         let start = target.slices.len();
         target.slices.extend_from_slice(self);
         (start, target.slices.len())
     }
 }
 
-impl<T, const N: usize> CopyOnto<CopyRegion<T>> for &&[T; N]
-where
-    T: Copy,
-{
+impl<T: Clone, const N: usize> CopyOnto<OwnedRegion<T>> for &&[T; N] {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         (*self).copy_onto(target)
     }
 }
 
-impl<T: Copy, const N: usize> ReserveItems<CopyRegion<T>> for &[T; N] {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T: Clone, const N: usize> ReserveItems<OwnedRegion<T>> for &[T; N] {
+    fn reserve_items<I>(target: &mut OwnedRegion<T>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -117,30 +115,27 @@ impl<T: Copy, const N: usize> ReserveItems<CopyRegion<T>> for &[T; N] {
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &[T]
-where
-    T: Copy,
-{
+impl<T: Clone> CopyOnto<OwnedRegion<T>> for &[T] {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         let start = target.slices.len();
         target.slices.extend_from_slice(self);
         (start, target.slices.len())
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &&[T]
+impl<T: Clone> CopyOnto<OwnedRegion<T>> for &&[T]
 where
-    T: Copy,
+    for<'a> &'a [T]: CopyOnto<OwnedRegion<T>>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         (*self).copy_onto(target)
     }
 }
 
-impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T> ReserveItems<OwnedRegion<T>> for &[T] {
+    fn reserve_items<I>(target: &mut OwnedRegion<T>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -148,18 +143,24 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &[T] {
     }
 }
 
-impl<T> CopyOnto<CopyRegion<T>> for &Vec<T>
-where
-    T: Copy,
-{
+impl<T> CopyOnto<OwnedRegion<T>> for Vec<T> {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(mut self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
+        let start = target.slices.len();
+        target.slices.append(&mut self);
+        (start, target.slices.len())
+    }
+}
+
+impl<T: Clone> CopyOnto<OwnedRegion<T>> for &Vec<T> {
+    #[inline]
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         self.as_slice().copy_onto(target)
     }
 }
 
-impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T> ReserveItems<OwnedRegion<T>> for &Vec<T> {
+    fn reserve_items<I>(target: &mut OwnedRegion<T>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -167,20 +168,17 @@ impl<T: Copy> ReserveItems<CopyRegion<T>> for &Vec<T> {
     }
 }
 
-impl<T, I: IntoIterator<Item = T>> CopyOnto<CopyRegion<T>> for CopyIter<I>
-where
-    T: Copy,
-{
+impl<T: Clone, I: IntoIterator<Item = T>> CopyOnto<OwnedRegion<T>> for CopyIter<I> {
     #[inline]
-    fn copy_onto(self, target: &mut CopyRegion<T>) -> <CopyRegion<T> as Region>::Index {
+    fn copy_onto(self, target: &mut OwnedRegion<T>) -> <OwnedRegion<T> as Region>::Index {
         let start = target.slices.len();
         target.slices.extend(self.0);
         (start, target.slices.len())
     }
 }
 
-impl<T: Copy, J: IntoIterator<Item = T>> ReserveItems<CopyRegion<T>> for CopyIter<J> {
-    fn reserve_items<I>(target: &mut CopyRegion<T>, items: I)
+impl<T, J: IntoIterator<Item = T>> ReserveItems<OwnedRegion<T>> for CopyIter<J> {
+    fn reserve_items<I>(target: &mut OwnedRegion<T>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
@@ -198,7 +196,7 @@ mod tests {
 
     #[test]
     fn test_copy_array() {
-        let mut r = <CopyRegion<u8>>::default();
+        let mut r = <OwnedRegion<u8>>::default();
         ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
         let index = [1; 4].copy_onto(&mut r);
         assert_eq!([1, 1, 1, 1], r.index(index));
@@ -206,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_copy_ref_ref_array() {
-        let mut r = <CopyRegion<u8>>::default();
+        let mut r = <OwnedRegion<u8>>::default();
         ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
         let index = (&&[1; 4]).copy_onto(&mut r);
         assert_eq!([1, 1, 1, 1], r.index(index));
@@ -214,15 +212,17 @@ mod tests {
 
     #[test]
     fn test_copy_vec() {
-        let mut r = <CopyRegion<u8>>::default();
+        let mut r = <OwnedRegion<u8>>::default();
         ReserveItems::reserve_items(&mut r, std::iter::once(&vec![1; 4]));
         let index = (&vec![1; 4]).copy_onto(&mut r);
         assert_eq!([1, 1, 1, 1], r.index(index));
+        let index = vec![2; 4].copy_onto(&mut r);
+        assert_eq!([2, 2, 2, 2], r.index(index));
     }
 
     #[test]
     fn test_copy_iter() {
-        let mut r = <CopyRegion<u8>>::default();
+        let mut r = <OwnedRegion<u8>>::default();
         ReserveItems::reserve_items(
             &mut r,
             std::iter::once(CopyIter(std::iter::repeat(1).take(4))),

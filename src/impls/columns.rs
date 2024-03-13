@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::CopyIter;
-use crate::{CopyOnto, CopyRegion, Region};
+use crate::{CopyOnto, OwnedRegion, Region};
 
 /// A region that can store a variable number of elements per row.
 ///
@@ -62,7 +62,7 @@ where
 {
     /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
-    indices: ConsecutiveOffsetPairs<CopyRegion<R::Index>, OffsetOptimized>,
+    indices: ConsecutiveOffsetPairs<OwnedRegion<R::Index>, OffsetOptimized>,
     /// Storage for columns.
     inner: Vec<R>,
 }
@@ -374,7 +374,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::{CopyIter, CopyOnto, CopyRegion, MirrorRegion, Region, StringRegion};
+    use crate::{CopyIter, CopyOnto, MirrorRegion, OwnedRegion, Region, StringRegion};
 
     use super::*;
 
@@ -518,8 +518,8 @@ mod tests {
     fn read_columns_copy_onto() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
-        let mut r2 = <ColumnsRegion<CopyRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
+        let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
             let idx = row.copy_onto(&mut r);
@@ -533,7 +533,7 @@ mod tests {
     fn test_clear() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         let mut idx = None;
         for row in &data {
@@ -548,7 +548,7 @@ mod tests {
     fn copy_reserve_regions() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<CopyRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
             row.copy_onto(&mut r);
@@ -557,7 +557,7 @@ mod tests {
             row.copy_onto(&mut r);
         }
 
-        let mut r2 = <ColumnsRegion<CopyRegion<u8>>>::default();
+        let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
         r2.reserve_regions(std::iter::once(&r));
 
         let mut cap = 0;

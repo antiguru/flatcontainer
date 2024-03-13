@@ -1,6 +1,6 @@
 //! A region that encodes its contents.
 
-use crate::{CopyOnto, CopyRegion, Region};
+use crate::{CopyOnto, OwnedRegion, Region};
 
 pub use self::misra_gries::MisraGries;
 pub use dictionary::DictionaryCodec;
@@ -72,7 +72,7 @@ fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
 
 /// A region that encodes its data in a codec `C`.
 #[derive(Default, Debug)]
-pub struct CodecRegion<C: Codec, R = CopyRegion<u8>> {
+pub struct CodecRegion<C: Codec, R = OwnedRegion<u8>> {
     inner: R,
     codec: C,
 }
