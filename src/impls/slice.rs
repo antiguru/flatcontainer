@@ -121,7 +121,7 @@ pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Reg
     end: usize,
 }
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> ReadSlice<'a, C, O> {
+impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     /// Read the n-th item from the underlying region.
     ///
     /// # Panics
@@ -162,23 +162,23 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> ReadSlice<'a, C, O> {
     }
 }
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> Debug for ReadSlice<'a, C, O>
+impl<C: Region, O: OffsetContainer<C::Index>> Debug for ReadSlice<'_, C, O>
 where
-    C::ReadItem<'a>: Debug,
+    for<'a> C::ReadItem<'a>: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'a, C, O> {
+impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'a, C, O> {}
+impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
     type Item = C::ReadItem<'a>;
@@ -207,10 +207,11 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a,
     }
 }
 
-impl<'a, C, T: 'a, O: OffsetContainer<C::Index>> CopyOnto<SliceRegion<C, O>> for &'a [T]
+impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &[T]
 where
     C: Region,
-    &'a T: CopyOnto<C>,
+    for<'a> &'a T: CopyOnto<C>,
+    O: OffsetContainer<C::Index>,
 {
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
@@ -222,9 +223,11 @@ where
     }
 }
 
-impl<'a, T, R: Region, O: OffsetContainer<R::Index>> ReserveItems<SliceRegion<R, O>> for &'a [T]
+impl<T, R, O> ReserveItems<SliceRegion<R, O>> for &[T]
 where
-    &'a T: ReserveItems<R> + 'a,
+    for<'a> &'a T: ReserveItems<R>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
     where
@@ -235,34 +238,11 @@ where
     }
 }
 
-impl<'a, C, T, O: OffsetContainer<C::Index>> CopyOnto<SliceRegion<C, O>> for &'a Vec<T>
-where
-    C: Region,
-    &'a [T]: CopyOnto<SliceRegion<C, O>>,
-{
-    #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
-    }
-}
-
-impl<'a, T: 'a, R: Region, O: OffsetContainer<R::Index>> ReserveItems<SliceRegion<R, O>>
-    for &'a Vec<T>
-where
-    &'a T: ReserveItems<R>,
-{
-    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
-    where
-        I: Iterator<Item = Self> + Clone,
-    {
-        ReserveItems::reserve_items(target, items.map(Deref::deref));
-    }
-}
-
-impl<C, T, O: OffsetContainer<C::Index>> CopyOnto<SliceRegion<C, O>> for Vec<T>
+impl<C, T, O> CopyOnto<SliceRegion<C, O>> for Vec<T>
 where
     C: Region,
     T: CopyOnto<C>,
+    O: OffsetContainer<C::Index>,
 {
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
@@ -274,10 +254,49 @@ where
     }
 }
 
-impl<'a, C: Region + 'a, O: OffsetContainer<C::Index>> CopyOnto<SliceRegion<C, O>>
-    for ReadSlice<'a, C, O>
+impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &Vec<T>
 where
-    C::ReadItem<'a>: CopyOnto<C>,
+    C: Region,
+    for<'a> &'a [T]: CopyOnto<SliceRegion<C, O>>,
+    O: OffsetContainer<C::Index>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &&Vec<T>
+where
+    C: Region,
+    for<'a> &'a [T]: CopyOnto<SliceRegion<C, O>>,
+    O: OffsetContainer<C::Index>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<T, R, O> ReserveItems<SliceRegion<R, O>> for &Vec<T>
+where
+    for<'a> &'a T: ReserveItems<R>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
+{
+    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        ReserveItems::reserve_items(target, items.map(Deref::deref));
+    }
+}
+
+impl<C, O> CopyOnto<SliceRegion<C, O>> for ReadSlice<'_, C, O>
+where
+    for<'a> C::ReadItem<'a>: CopyOnto<C>,
+    C: Region,
+    O: OffsetContainer<C::Index>,
 {
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
@@ -292,10 +311,11 @@ where
     }
 }
 
-impl<'a, T, R: Region, O: OffsetContainer<R::Index>, const N: usize> CopyOnto<SliceRegion<R, O>>
-    for &'a [T; N]
+impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for [T; N]
 where
-    for<'b> &'b [T]: CopyOnto<SliceRegion<R, O>>,
+    for<'a> &'a [T]: CopyOnto<SliceRegion<R, O>>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
 {
     #[inline]
     fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
@@ -303,27 +323,41 @@ where
     }
 }
 
-impl<'a, T: 'a, R: Region, O: OffsetContainer<R::Index>, const N: usize>
-    ReserveItems<SliceRegion<R, O>> for &'a [T; N]
+impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for &[T; N]
 where
-    &'a T: ReserveItems<R>,
+    for<'a> &'a [T]: CopyOnto<SliceRegion<R, O>>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for &&[T; N]
+where
+    for<'b> &'b [T]: CopyOnto<SliceRegion<R, O>>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
+{
+    #[inline]
+    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
+        self.as_slice().copy_onto(target)
+    }
+}
+
+impl<T, R, O, const N: usize> ReserveItems<SliceRegion<R, O>> for &[T; N]
+where
+    for<'a> &'a T: ReserveItems<R>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
     where
         I: Iterator<Item = Self> + Clone,
     {
         ReserveItems::reserve_items(target, items.map(<[T; N]>::as_slice));
-    }
-}
-
-impl<T, R: Region, O: OffsetContainer<R::Index>, const N: usize> CopyOnto<SliceRegion<R, O>>
-    for [T; N]
-where
-    for<'a> &'a [T]: CopyOnto<SliceRegion<R, O>>,
-{
-    #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
     }
 }
 
