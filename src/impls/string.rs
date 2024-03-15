@@ -172,7 +172,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyOnto, Region, ReserveItems, StringRegion};
+    use crate::{CopyOnto, ReadToOwned, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
@@ -224,5 +224,16 @@ mod tests {
 
         assert!(cap > 0);
         assert!(cnt > 0);
+    }
+
+    #[test]
+    fn owned() {
+        let mut r = <StringRegion>::default();
+
+        let idx = "abc".copy_onto(&mut r);
+        let reference = r.index(idx);
+        let owned = reference.read_to_owned();
+        let idx = owned.copy_onto(&mut r);
+        assert_eq!("abc", r.index(idx));
     }
 }
