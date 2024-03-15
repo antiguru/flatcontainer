@@ -321,6 +321,35 @@ impl<R: Region + Clone> Clone for FlatStack<R> {
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct CopyIter<I>(pub I);
 
+/// Conversion of references to owned data. Similar to [`ToOwned`], but without the requirement
+/// that target can be borrowed to self.
+///
+/// The clumsy names originate from `to_owned` already being in scope.
+pub trait ReadToOwned {
+    /// The owned type. Static lifetime to indicate that the lifetime of the owned object must not
+    /// depend on self.
+    type Owned: 'static;
+    /// Convert self into an owned representation.
+    fn read_to_owned(self) -> Self::Owned;
+    /// Convert self into an owned representation, re-using an existing allocation.
+    fn read_to_owned_into(self, target: &mut Self::Owned);
+}
+
+impl<T: ToOwned + ?Sized> ReadToOwned for &T
+where
+    T::Owned: 'static,
+{
+    type Owned = T::Owned;
+
+    fn read_to_owned(self) -> Self::Owned {
+        self.to_owned()
+    }
+
+    fn read_to_owned_into(self, target: &mut Self::Owned) {
+        self.clone_into(target);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
@@ -396,6 +425,26 @@ mod tests {
         name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
         age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
         hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
+    }
+
+    impl ReadToOwned for PersonRef<'_> {
+        type Owned = Person;
+        fn read_to_owned(self) -> Person {
+            Person {
+                name: self.name.to_string(),
+                age: self.age,
+                hobbies: self.hobbies.iter().map(|s| s.to_string()).collect(),
+            }
+        }
+        fn read_to_owned_into(self, target: &mut Person) {
+            target.name.clear();
+            target.name.push_str(self.name);
+            target.age = self.age;
+            target.hobbies.clear();
+            target
+                .hobbies
+                .extend(self.hobbies.iter().map(str::to_string));
+        }
     }
 
     impl Region for PersonRegion {
@@ -696,5 +745,21 @@ mod tests {
         c.copy(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+    }
+
+    fn owned_roundtrip<R>(region: &mut R, index: R::Index)
+    where
+        for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as ReadToOwned>::Owned>,
+        for<'a> R::ReadItem<'a>: ReadToOwned,
+    {
+        let item = region.index(index).read_to_owned();
+        region.push(item);
+    }
+
+    #[test]
+    fn test_owned() {
+        let mut c = <StringRegion>::default();
+        let index = c.push("abc".to_string());
+        owned_roundtrip(&mut c, index);
     }
 }

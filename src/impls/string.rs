@@ -174,7 +174,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{Push, Region, ReserveItems, StringRegion};
+    use crate::{Push, ReadToOwned, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
@@ -226,5 +226,16 @@ mod tests {
 
         assert!(cap > 0);
         assert!(cnt > 0);
+    }
+
+    #[test]
+    fn owned() {
+        let mut r = <StringRegion>::default();
+
+        let idx = r.push("abc");
+        let reference = r.index(idx);
+        let owned = reference.read_to_owned();
+        let idx = r.push(owned);
+        assert_eq!("abc", r.index(idx));
     }
 }
