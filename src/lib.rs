@@ -33,14 +33,15 @@ pub trait Index: Copy {}
 #[cfg(not(feature = "serde"))]
 impl<T: Copy> Index for T {}
 
-/// A region to absorb presented data and present it as a type with a lifetime.
+/// A region that we can read from, but not write to.
 ///
-/// This type absorbs data and provides an index to look up an equivalent representation
-/// of this data at a later time. It is up to an implementation to select the appropriate
-/// presentation of the data, and what data it can absorb.
+/// It presents data in an implementation-specific way, encoded by the
+/// [`ReadRegion::ReadItem`] associated type, and supports indexing
+/// using [`ReadRegion::index`]. The index type is again specific to an
+/// implementation.
 ///
-/// Implement the [`Push`] trait for all types that can be copied into a region.
-pub trait Region: Default {
+/// For a region that is writable, see [`Region`] instead.
+pub trait ReadRegion {
     /// An owned type that can be constructed from a read item.
     type Owned;
 
@@ -53,15 +54,24 @@ pub trait Region: Default {
     /// as an opaque type, even if known.
     type Index: Index;
 
-    /// Construct a region that can absorb the contents of `regions` in the future.
-    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
-    where
-        Self: 'a;
-
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
     #[must_use]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
+}
+
+/// A region to absorb presented data and present it as a type with a lifetime.
+///
+/// This type absorbs data and provides an index to look up an equivalent representation
+/// of this data at a later time. It is up to an implementation to select the appropriate
+/// presentation of the data, and what data it can absorb.
+///
+/// Implement the [`Push`] trait for all types that can be copied into a region.
+pub trait Region: ReadRegion + Default {
+    /// Construct a region that can absorb the contents of `regions` in the future.
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -439,7 +449,7 @@ mod tests {
     fn all_types() {
         fn test_copy<T, R: Region + Clone>(t: T)
         where
-            for<'a> R: Push<T> + Push<<R as Region>::ReadItem<'a>>,
+            for<'a> R: Push<T> + Push<<R as ReadRegion>::ReadItem<'a>>,
             // Make sure that types are debug, even if we don't use this in the test.
             for<'a> R::ReadItem<'a>: Debug,
         {
@@ -598,7 +608,7 @@ mod tests {
     fn test_owned() {
         fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
         where
-            for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
+            for<'a> R: Region + Push<<<R as ReadRegion>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
             for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O> + Eq + Debug,
         {
             let item = region.index(index);

@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{Push, Region};
+use crate::{Push, ReadRegion, Region};
 
 use self::encoded::Encoded;
 use self::huffman::Huffman;
@@ -47,15 +47,28 @@ impl<B: Ord + Clone> Clone for HuffmanContainer<B> {
     }
 }
 
-impl<B> Region for HuffmanContainer<B>
+impl<B> ReadRegion for HuffmanContainer<B>
 where
     B: Ord + Clone + Sized + 'static,
 {
     type Owned = Vec<B>;
     type ReadItem<'a> = Wrapped<'a, B>;
-
     type Index = (usize, usize);
 
+    fn index(&self, (lower, upper): Self::Index) -> Self::ReadItem<'_> {
+        match &self.inner {
+            Ok((huffman, bytes, _bits)) => {
+                Wrapped::encoded(Encoded::new(huffman, bytes, (lower, upper)))
+            }
+            Err(raw) => Wrapped::decoded(&raw[lower..upper]),
+        }
+    }
+}
+
+impl<B> Region for HuffmanContainer<B>
+where
+    B: Ord + Clone + Sized + 'static,
+{
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -76,15 +89,6 @@ where
         Self {
             inner,
             stats: Default::default(),
-        }
-    }
-
-    fn index(&self, (lower, upper): Self::Index) -> Self::ReadItem<'_> {
-        match &self.inner {
-            Ok((huffman, bytes, _bits)) => {
-                Wrapped::encoded(Encoded::new(huffman, bytes, (lower, upper)))
-            }
-            Err(raw) => Wrapped::decoded(&raw[lower..upper]),
         }
     }
 

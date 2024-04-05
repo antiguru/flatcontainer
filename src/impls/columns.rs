@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::{CopyIter, IntoOwned};
-use crate::{OwnedRegion, Push, Region};
+use crate::{OwnedRegion, Push, ReadRegion, Region};
 
 /// A region that can store a variable number of elements per row.
 ///
@@ -24,7 +24,7 @@ use crate::{OwnedRegion, Push, Region};
 /// Copy a table-like structure:
 /// ```
 /// # use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-/// # use flatcontainer::{ColumnsRegion, Push, Region, StringRegion};
+/// # use flatcontainer::{ColumnsRegion, Push, ReadRegion, Region, StringRegion};
 /// let data = [
 ///     vec![],
 ///     vec!["1"],
@@ -58,7 +58,7 @@ use crate::{OwnedRegion, Push, Region};
 )]
 pub struct ColumnsRegion<R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
@@ -84,14 +84,26 @@ where
     }
 }
 
-impl<R> Region for ColumnsRegion<R>
+impl<R> ReadRegion for ColumnsRegion<R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
     type Index = usize;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        ReadColumns(Ok(ReadColumnsInner {
+            columns: &self.inner,
+            index: self.indices.index(index),
+        }))
+    }
+}
+
+impl<R> Region for ColumnsRegion<R>
+where
+    R: Region,
+{
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -109,13 +121,6 @@ where
             indices: ConsecutiveOffsetPairs::merge_regions(regions.map(|r| &r.indices)),
             inner,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        ReadColumns(Ok(ReadColumnsInner {
-            columns: &self.inner,
-            index: self.indices.index(index),
-        }))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -175,11 +180,11 @@ where
 /// Read the values of a row.
 pub struct ReadColumns<'a, R>(Result<ReadColumnsInner<'a, R>, &'a [R::Owned]>)
 where
-    R: Region;
+    R: ReadRegion;
 
 struct ReadColumnsInner<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     /// Storage for columns.
     columns: &'a [R],
@@ -189,7 +194,7 @@ where
 
 impl<'a, R> Clone for ReadColumns<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     fn clone(&self) -> Self {
         *self
@@ -198,19 +203,19 @@ where
 
 impl<'a, R> Clone for ReadColumnsInner<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, R> Copy for ReadColumns<'a, R> where R: Region {}
-impl<'a, R> Copy for ReadColumnsInner<'a, R> where R: Region {}
+impl<'a, R> Copy for ReadColumns<'a, R> where R: ReadRegion {}
+impl<'a, R> Copy for ReadColumnsInner<'a, R> where R: ReadRegion {}
 
 impl<'a, R> Debug for ReadColumns<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
     R::ReadItem<'a>: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -220,7 +225,7 @@ where
 
 impl<'a, R> ReadColumns<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     /// Iterate the individual values of a row.
     #[must_use]
@@ -255,9 +260,10 @@ where
         }
     }
 }
+
 impl<'a, R> ReadColumnsInner<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     /// Get the element at `offset`.
     #[must_use]
@@ -280,7 +286,7 @@ where
 
 impl<'a, R> IntoOwned<'a> for ReadColumns<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     type Owned = Vec<R::Owned>;
 
@@ -305,7 +311,7 @@ where
 
 impl<'a, R> IntoIterator for &ReadColumns<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     type Item = R::ReadItem<'a>;
     type IntoIter = ReadColumnsIter<'a, R>;
@@ -321,18 +327,18 @@ where
 }
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIter<'a, R: Region>(
+pub struct ReadColumnsIter<'a, R: ReadRegion>(
     Result<ReadColumnsIterInner<'a, R>, std::slice::Iter<'a, R::Owned>>,
 );
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIterInner<'a, R: Region> {
+pub struct ReadColumnsIterInner<'a, R: ReadRegion> {
     iter: std::iter::Zip<std::slice::Iter<'a, R::Index>, std::slice::Iter<'a, R>>,
 }
 
 impl<'a, R> Iterator for ReadColumnsIter<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     type Item = R::ReadItem<'a>;
 
@@ -346,7 +352,7 @@ where
 
 impl<'a, R> Iterator for ReadColumnsIterInner<'a, R>
 where
-    R: Region,
+    R: ReadRegion,
 {
     type Item = R::ReadItem<'a>;
 
@@ -357,9 +363,9 @@ where
 
 impl<R> Push<ReadColumns<'_, R>> for ColumnsRegion<R>
 where
-    for<'a> R: Region + Push<<R as Region>::ReadItem<'a>>,
+    for<'a> R: ReadRegion + Push<<R as ReadRegion>::ReadItem<'a>>,
 {
-    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -375,9 +381,9 @@ where
 
 impl<'a, R, T> Push<&'a [T]> for ColumnsRegion<R>
 where
-    R: Region + Push<&'a T>,
+    R: ReadRegion + Push<&'a T>,
 {
-    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -393,9 +399,9 @@ where
 
 impl<R, T, const N: usize> Push<[T; N]> for ColumnsRegion<R>
 where
-    R: Region + Push<T>,
+    R: ReadRegion + Push<T>,
 {
-    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -411,9 +417,9 @@ where
 
 impl<'a, R, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R>
 where
-    R: Region + Push<&'a T>,
+    R: ReadRegion + Push<&'a T>,
 {
-    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -429,9 +435,9 @@ where
 
 impl<R, T> Push<Vec<T>> for ColumnsRegion<R>
 where
-    R: Region + Push<T>,
+    R: ReadRegion + Push<T>,
 {
-    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -447,9 +453,9 @@ where
 
 impl<'a, R, T> Push<&'a Vec<T>> for ColumnsRegion<R>
 where
-    R: Region + Push<&'a T>,
+    R: ReadRegion + Push<&'a T>,
 {
-    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R> as ReadRegion>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -465,11 +471,11 @@ where
 
 impl<R, T, I> Push<CopyIter<I>> for ColumnsRegion<R>
 where
-    R: Region + Push<T>,
+    R: ReadRegion + Push<T>,
     I: IntoIterator<Item = T>,
 {
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R> as ReadRegion>::Index {
         let iter = item.0.into_iter().enumerate().map(|(index, value)| {
             // Ensure all required regions exist.
             if self.inner.len() <= index {

@@ -1,16 +1,16 @@
 //! Demonstration of how to encode recursive data structures.
 
 use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-use flatcontainer::{IntoOwned, Push, Region, StringRegion};
+use flatcontainer::{IntoOwned, Push, ReadRegion, Region, StringRegion};
 
 #[derive(Clone)]
 struct List<T>(T, Option<Box<List<T>>>);
 
-struct ListRef<'a, C: Region>(
-    Result<(&'a ListRegion<C>, <C as Region>::Index, Option<usize>), &'a List<C::Owned>>,
+struct ListRef<'a, C: ReadRegion>(
+    Result<(&'a ListRegion<C>, <C as ReadRegion>::Index, Option<usize>), &'a List<C::Owned>>,
 );
 
-impl<'a, C: Region> ListRef<'a, C>
+impl<'a, C: ReadRegion> ListRef<'a, C>
 where
     C::Owned: Clone,
 {
@@ -32,7 +32,7 @@ where
     }
 }
 
-impl<'a, C: Region> IntoOwned<'a> for ListRef<'a, C>
+impl<'a, C: ReadRegion> IntoOwned<'a> for ListRef<'a, C>
 where
     C::Owned: Clone,
 {
@@ -55,7 +55,7 @@ where
 }
 
 #[derive(Debug)]
-struct ListRegion<C: Region> {
+struct ListRegion<C: ReadRegion> {
     indexes: Vec<(C::Index, Option<usize>)>,
     inner: C,
 }
@@ -69,27 +69,33 @@ impl<C: Region> Default for ListRegion<C> {
     }
 }
 
-impl<C: Region> Region for ListRegion<C>
+impl<R> ReadRegion for ListRegion<R>
 where
-    C::Owned: Clone,
+    R::Owned: Clone,
+    R: ReadRegion,
 {
-    type Owned = List<C::Owned>;
-    type ReadItem<'a> = ListRef<'a, C> where C: 'a;
+    type Owned = List<R::Owned>;
+    type ReadItem<'a> = ListRef<'a, R> where R: 'a;
     type Index = usize;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        let (inner_index, continuation) = self.indexes[index];
+        ListRef(Ok((self, inner_index, continuation)))
+    }
+}
+
+impl<R: Region> Region for ListRegion<R>
+where
+    R::Owned: Clone,
+{
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self {
             indexes: Vec::with_capacity(regions.clone().map(|r| r.indexes.len()).sum()),
-            inner: C::merge_regions(regions.map(|r| &r.inner)),
+            inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        let (inner_index, continuation) = self.indexes[index];
-        ListRef(Ok((self, inner_index, continuation)))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -120,12 +126,12 @@ where
     }
 }
 
-impl<C, T> Push<&List<T>> for ListRegion<C>
+impl<R, T> Push<&List<T>> for ListRegion<R>
 where
-    for<'a> C: Region + Push<&'a T>,
-    C::Owned: Clone,
+    for<'a> R: Region + Push<&'a T>,
+    R::Owned: Clone,
 {
-    fn push(&mut self, item: &List<T>) -> <ListRegion<C> as Region>::Index {
+    fn push(&mut self, item: &List<T>) -> <ListRegion<R> as ReadRegion>::Index {
         let inner_index = self.inner.push(&item.0);
         let continuation = item.1.as_deref().map(|next| self.push(next));
         self.indexes.push((inner_index, continuation));

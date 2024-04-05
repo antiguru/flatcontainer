@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, ReadRegion, Region, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -25,7 +25,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name: Region + Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as ReadRegion>::Index: crate::Index),*
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -39,15 +39,28 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
-            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
+            impl<$($name: ReadRegion),*> ReadRegion for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as ReadRegion>::Index: crate::Index),*
             {
                 type Owned = ($($name::Owned,)*);
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
-
                 type Index = ($($name::Index,)*);
 
+                #[inline]
+                fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+                    let ($($name,)*) = index;
+                    (
+                        $(self.[<container $name>].index($name),)*
+                    )
+                }
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
+            where
+               $(<$name as ReadRegion>::Index: crate::Index),*
+            {
                 #[inline]
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
@@ -56,13 +69,6 @@ macro_rules! tuple_flatcontainer {
                     Self {
                         $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
                     }
-                }
-
-                #[inline] fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-                    let ($($name,)*) = index;
-                    (
-                        $(self.[<container $name>].index($name),)*
-                    )
                 }
 
                 #[inline(always)]
@@ -101,7 +107,7 @@ macro_rules! tuple_flatcontainer {
             {
                 #[inline]
                 fn push(&mut self, item: ($($name,)*))
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as ReadRegion>::Index {
                     let ($($name,)*) = item;
                     ($(self.[<container $name>].push($name),)*)
                 }
@@ -115,7 +121,7 @@ macro_rules! tuple_flatcontainer {
             {
                 #[inline]
                 fn push(&mut self, item: &'a ($($name,)*))
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as ReadRegion>::Index {
                     let ($($name,)*) = item;
                     ($(self.[<container $name>].push($name),)*)
                 }
@@ -240,7 +246,7 @@ cfg_if::cfg_if! {
 #[cfg(test)]
 mod tests {
     use crate::impls::tuple::TupleABCRegion;
-    use crate::{FlatStack, MirrorRegion, Push, Region, StringRegion};
+    use crate::{FlatStack, MirrorRegion, Push, ReadRegion, Region, StringRegion};
 
     #[test]
     fn test_tuple() {

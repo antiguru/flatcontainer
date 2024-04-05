@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, ReadRegion, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -15,7 +15,7 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 ///
 /// Add results to a result region:
 /// ```
-/// use flatcontainer::{Containerized, Push, Region, ResultRegion};
+/// use flatcontainer::{Containerized, Push, ReadRegion, Region, ResultRegion};
 /// let mut r =
 ///     <ResultRegion<<() as Containerized>::Region, <String as Containerized>::Region>>::default();
 ///
@@ -46,15 +46,29 @@ impl<T: Clone, E: Clone> Clone for ResultRegion<T, E> {
     }
 }
 
-impl<T, E> Region for ResultRegion<T, E>
+impl<T, E> ReadRegion for ResultRegion<T, E>
 where
-    T: Region,
-    E: Region,
+    T: ReadRegion,
+    E: ReadRegion,
 {
     type Owned = Result<T::Owned, E::Owned>;
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        match index {
+            Ok(index) => Ok(self.oks.index(index)),
+            Err(index) => Err(self.errs.index(index)),
+        }
+    }
+}
+
+impl<T, E> Region for ResultRegion<T, E>
+where
+    T: Region,
+    E: Region,
+{
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -63,14 +77,6 @@ where
         Self {
             oks: T::merge_regions(regions.clone().map(|r| &r.oks)),
             errs: E::merge_regions(regions.map(|r| &r.errs)),
-        }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        match index {
-            Ok(index) => Ok(self.oks.index(index)),
-            Err(index) => Err(self.errs.index(index)),
         }
     }
 
@@ -139,7 +145,7 @@ where
     EC: Region + Push<E>,
 {
     #[inline]
-    fn push(&mut self, item: Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
+    fn push(&mut self, item: Result<T, E>) -> <ResultRegion<TC, EC> as ReadRegion>::Index {
         match item {
             Ok(t) => Ok(self.oks.push(t)),
             Err(e) => Err(self.errs.push(e)),
@@ -153,7 +159,7 @@ where
     EC: Region + Push<&'a E>,
 {
     #[inline]
-    fn push(&mut self, item: &'a Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
+    fn push(&mut self, item: &'a Result<T, E>) -> <ResultRegion<TC, EC> as ReadRegion>::Index {
         match item {
             Ok(t) => Ok(self.oks.push(t)),
             Err(e) => Err(self.errs.push(e)),

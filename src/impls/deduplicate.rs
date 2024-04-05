@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
-use crate::{Push, Region, ReserveItems};
+use crate::{Push, ReadRegion, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
 ///
@@ -20,7 +20,7 @@ use crate::{Push, Region, ReserveItems};
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CollapseSequence<R: Region> {
+pub struct CollapseSequence<R: ReadRegion> {
     /// Inner region.
     inner: R,
     /// The index of the last pushed item.
@@ -50,11 +50,17 @@ impl<R: Region> Default for CollapseSequence<R> {
     }
 }
 
-impl<R: Region> Region for CollapseSequence<R> {
+impl<R: ReadRegion> ReadRegion for CollapseSequence<R> {
     type Owned = R::Owned;
     type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
     type Index = R::Index;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.inner.index(index)
+    }
+}
+
+impl<R: Region> Region for CollapseSequence<R> {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -63,10 +69,6 @@ impl<R: Region> Region for CollapseSequence<R> {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
             last_index: None,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.inner.index(index)
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -99,7 +101,7 @@ where
     R: Region + Push<T>,
     for<'a> T: PartialEq<R::ReadItem<'a>>,
 {
-    fn push(&mut self, item: T) -> <CollapseSequence<R> as Region>::Index {
+    fn push(&mut self, item: T) -> <CollapseSequence<R> as ReadRegion>::Index {
         if let Some(last_index) = self.last_index {
             if item == self.inner.index(last_index) {
                 return last_index;
@@ -122,7 +124,7 @@ where
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
 /// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-/// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{Push, OwnedRegion, ReadRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
 /// let index: usize = r.push(&b"abc");
@@ -172,18 +174,30 @@ where
     }
 }
 
+impl<R, O> ReadRegion for ConsecutiveOffsetPairs<R, O>
+where
+    R: ReadRegion<Index = (usize, usize)>,
+    O: OffsetContainer<usize>,
+{
+    type Owned = R::Owned;
+    type ReadItem<'a> = R::ReadItem<'a>
+        where
+            Self: 'a;
+
+    type Index = usize;
+
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.inner
+            .index((self.offsets.index(index), self.offsets.index(index + 1)))
+    }
+}
+
 impl<R, O> Region for ConsecutiveOffsetPairs<R, O>
 where
     R: Region<Index = (usize, usize)>,
     O: OffsetContainer<usize>,
 {
-    type Owned = R::Owned;
-    type ReadItem<'a> = R::ReadItem<'a>
-    where
-        Self: 'a;
-
-    type Index = usize;
-
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -196,12 +210,6 @@ where
             offsets,
             last_index: 0,
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.inner
-            .index((self.offsets.index(index), self.offsets.index(index + 1)))
     }
 
     #[inline]
@@ -242,7 +250,7 @@ where
     O: OffsetContainer<usize>,
 {
     #[inline]
-    fn push(&mut self, item: T) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {
+    fn push(&mut self, item: T) -> <ConsecutiveOffsetPairs<R, O> as ReadRegion>::Index {
         let index = self.inner.push(item);
         debug_assert_eq!(index.0, self.last_index);
         self.last_index = index.1;

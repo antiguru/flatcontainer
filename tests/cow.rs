@@ -4,7 +4,7 @@
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
-use flatcontainer::{FlatStack, IntoOwned, Push, Region, StringRegion};
+use flatcontainer::{FlatStack, IntoOwned, Push, ReadRegion, Region, StringRegion};
 
 pub struct GatCow<'a, B>
 where
@@ -102,24 +102,30 @@ where
 #[derive(Default, Debug, Clone)]
 struct CowRegion<R>(R);
 
+impl<R> ReadRegion for CowRegion<R>
+where
+    R: ReadRegion,
+    for<'a> R::ReadItem<'a>: Copy,
+{
+    type Owned = <R as ReadRegion>::Owned;
+    type ReadItem<'a> = GatCow<'a, R::ReadItem<'a>> where Self: 'a;
+    type Index = R::Index;
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        GatCowInner::Borrowed(self.0.index(index)).into()
+    }
+}
+
 impl<R> Region for CowRegion<R>
 where
     R: Region,
     for<'a> R::ReadItem<'a>: Copy,
 {
-    type Owned = <R as Region>::Owned;
-    type ReadItem<'a> = GatCow<'a, R::ReadItem<'a>> where Self: 'a;
-    type Index = R::Index;
-
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self(R::merge_regions(regions.map(|r| &r.0)))
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        GatCowInner::Borrowed(self.0.index(index)).into()
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
