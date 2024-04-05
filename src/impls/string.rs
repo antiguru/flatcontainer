@@ -4,7 +4,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{
+    Containerized, CopyOnto, FlatRead, FlatWrite, Flatten, ReadRegion, Region, ReserveItems,
+};
 
 /// A region to store strings and read `&str`.
 ///
@@ -32,20 +34,28 @@ use crate::{Containerized, CopyOnto, Region, ReserveItems};
 /// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StringRegion<R = OwnedRegion<u8>>
-where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-{
+pub struct StringRegion<R = OwnedRegion<u8>> {
     inner: R,
+}
+
+impl<R> ReadRegion for StringRegion<R>
+where
+    for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
+{
+    type ReadItem<'a> = &'a str where Self: 'a;
+    type Index = R::Index;
+
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        // SAFETY: All CopyOnto implementations only accept correct utf8 data
+        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
+    }
 }
 
 impl<R> Region for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
-    type ReadItem<'a> = &'a str where Self: 'a ;
-    type Index = R::Index;
-
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -53,12 +63,6 @@ where
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        // SAFETY: All CopyOnto implementations only accept correct utf8 data
-        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -79,6 +83,23 @@ where
     }
 }
 
+impl<R> Flatten for StringRegion<R>
+where
+    // for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
+    // for<'a, 'b> R::Flat<'a>: ReadRegion<ReadItem<'b> = &'b [u8]> + 'b,
+    R: Flatten,
+{
+    type Flat<'a> = StringRegion<R::Flat<'a>>;
+
+    fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
+        self.inner.entomb(write)
+    }
+
+    fn exhume<'a, Read: FlatRead<'a>>(buffer: &'a mut Read) -> std::io::Result<Self::Flat<'a>> {
+        R::exhume(buffer).map(|inner| StringRegion { inner })
+    }
+}
+
 impl Containerized for String {
     type Region = StringRegion;
 }
@@ -93,7 +114,7 @@ where
     for<'a> &'a [u8]: CopyOnto<R>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as ReadRegion>::Index {
         self.as_str().copy_onto(target)
     }
 }
@@ -104,7 +125,7 @@ where
     for<'a> &'a [u8]: CopyOnto<R>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as ReadRegion>::Index {
         self.as_str().copy_onto(target)
     }
 }
@@ -128,7 +149,7 @@ where
     for<'a> &'a [u8]: CopyOnto<R>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as ReadRegion>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
     }
 }
@@ -139,7 +160,7 @@ where
     for<'a> &'a [u8]: CopyOnto<R>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as Region>::Index {
+    fn copy_onto(self, target: &mut StringRegion<R>) -> <StringRegion<R> as ReadRegion>::Index {
         self.as_bytes().copy_onto(&mut target.inner)
     }
 }
@@ -172,7 +193,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyOnto, Region, ReserveItems, StringRegion};
+    use crate::{CopyOnto, ReadRegion, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {

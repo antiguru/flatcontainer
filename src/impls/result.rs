@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, ReadRegion, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -32,14 +32,28 @@ pub struct ResultRegion<T, E> {
     errs: E,
 }
 
+impl<T, E> ReadRegion for ResultRegion<T, E>
+where
+    T: ReadRegion,
+    E: ReadRegion,
+{
+    type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
+    type Index = Result<T::Index, E::Index>;
+
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        match index {
+            Ok(index) => Ok(self.oks.index(index)),
+            Err(index) => Err(self.errs.index(index)),
+        }
+    }
+}
+
 impl<T, E> Region for ResultRegion<T, E>
 where
     T: Region,
     E: Region,
 {
-    type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
-    type Index = Result<T::Index, E::Index>;
-
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -47,14 +61,6 @@ where
         Self {
             oks: T::merge_regions(regions.clone().map(|r| &r.oks)),
             errs: E::merge_regions(regions.map(|r| &r.errs)),
-        }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        match index {
-            Ok(index) => Ok(self.oks.index(index)),
-            Err(index) => Err(self.errs.index(index)),
         }
     }
 
@@ -91,7 +97,7 @@ where
     fn copy_onto(
         self,
         target: &mut ResultRegion<TC, EC>,
-    ) -> <ResultRegion<TC, EC> as Region>::Index {
+    ) -> <ResultRegion<TC, EC> as ReadRegion>::Index {
         match self {
             Ok(t) => Ok(t.copy_onto(&mut target.oks)),
             Err(e) => Err(e.copy_onto(&mut target.errs)),
@@ -110,7 +116,7 @@ where
     fn copy_onto(
         self,
         target: &mut ResultRegion<TC, EC>,
-    ) -> <ResultRegion<TC, EC> as Region>::Index {
+    ) -> <ResultRegion<TC, EC> as ReadRegion>::Index {
         match self {
             Ok(t) => Ok(t.copy_onto(&mut target.oks)),
             Err(e) => Err(e.copy_onto(&mut target.errs)),

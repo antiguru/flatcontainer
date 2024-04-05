@@ -32,14 +32,8 @@ pub trait Index: Copy {}
 #[cfg(not(feature = "serde"))]
 impl<T: Copy> Index for T {}
 
-/// A region to absorb presented data and present it as a type with a lifetime.
-///
-/// This type absorbs data and provides an index to look up an equivalent representation
-/// of this data at a later time. It is up to an implementation to select the appropriate
-/// presentation of the data, and what data it can absorb.
-///
-/// Implement the [`CopyOnto`] trait for all types that can be copied into a region.
-pub trait Region: Default {
+/// TODO
+pub trait ReadRegion {
     /// The type of the data that one gets out of the container.
     type ReadItem<'a>
     where
@@ -49,14 +43,23 @@ pub trait Region: Default {
     /// as an opaque type, even if known.
     type Index: Index;
 
+    /// Index into the container. The index must be obtained by
+    /// pushing data into the container.
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
+}
+
+/// A region to absorb presented data and present it as a type with a lifetime.
+///
+/// This type absorbs data and provides an index to look up an equivalent representation
+/// of this data at a later time. It is up to an implementation to select the appropriate
+/// presentation of the data, and what data it can absorb.
+///
+/// Implement the [`CopyOnto`] trait for all types that can be copied into a region.
+pub trait Region: ReadRegion + Default {
     /// Construct a region that can absorb the contents of `regions` in the future.
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a;
-
-    /// Index into the container. The index must be obtained by
-    /// pushing data into the container.
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -75,6 +78,110 @@ pub trait Region: Default {
 pub trait Containerized {
     /// The recommended container type.
     type Region: Region;
+}
+
+/// TODO
+pub trait FlatWrite {
+    /// TODO
+    fn write_lengthened<T: Copy + 'static>(&mut self, data: &[T]) -> std::io::Result<()>;
+    /// TODO
+    fn write_unit<T: Copy + 'static>(&mut self, unit: &T) -> std::io::Result<()>;
+}
+
+/// TODO
+pub struct DefaultFlatWrite<W: std::io::Write> {
+    inner: W,
+    offset: usize,
+}
+
+impl<W: std::io::Write> DefaultFlatWrite<W> {
+    const NULLS: [u8; 32] = [0; 32];
+
+    /// TODO
+    pub fn new(inner: W) -> Self {
+        Self { inner, offset: 0 }
+    }
+
+    fn pad<T>(&mut self) -> std::io::Result<()> {
+        let padding = (self.offset as *const u8).align_offset(std::mem::size_of::<T>());
+        self.inner.write_all(&Self::NULLS[..padding])?;
+        self.offset += padding;
+        Ok(())
+    }
+}
+
+impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
+    fn write_lengthened<T: Copy + 'static>(&mut self, data: &[T]) -> std::io::Result<()> {
+        self.write_unit(&data.len())?;
+        self.pad::<T>()?;
+        let data = unsafe { std::mem::transmute(data) };
+        self.inner.write_all(data)?;
+        self.offset += data.len();
+        Ok(())
+    }
+
+    fn write_unit<T: Copy + 'static>(&mut self, unit: &T) -> std::io::Result<()> {
+        self.pad::<T>()?;
+        let slice = std::slice::from_ref(unit);
+        let bytes = unsafe {
+            std::slice::from_raw_parts(
+                slice.as_ptr() as *const u8,
+                slice.len() * std::mem::size_of::<T>(),
+            )
+        };
+        self.inner.write_all(bytes)?;
+        self.offset += bytes.len();
+        Ok(())
+    }
+}
+
+/// TODO
+pub trait FlatRead<'a> {
+    /// TODO
+    fn read_lengthened<T: Copy + 'static>(&mut self) -> std::io::Result<&'a [T]>;
+    /// TODO
+    fn read_unit<T: Copy + 'static>(&mut self) -> std::io::Result<&'a T>;
+}
+
+/// TODO
+pub struct BufferFlatRead<'a> {
+    buffer: &'a [u8],
+}
+
+impl<'a> BufferFlatRead<'a> {
+    /// TODO
+    pub fn new(buffer: &'a [u8]) -> Self {
+        Self { buffer }
+    }
+}
+
+impl<'a> FlatRead<'a> for BufferFlatRead<'a> {
+    fn read_lengthened<T: Copy + 'static>(&mut self) -> std::io::Result<&'a [T]> {
+        let len = *self.read_unit::<usize>()?;
+        let (head, data, _tail) = unsafe { self.buffer.align_to::<T>() };
+        let result = &data[..len];
+        self.buffer = &self.buffer[head.len() + result.len() * std::mem::size_of::<T>()..];
+        Ok(result)
+    }
+
+    fn read_unit<T: Copy + 'static>(&mut self) -> std::io::Result<&'a T> {
+        let (head, data, _tail) = unsafe { self.buffer.align_to::<T>() };
+        let result = &data[0];
+        self.buffer = &self.buffer[head.len() + std::mem::size_of::<T>()..];
+        Ok(result)
+    }
+}
+
+/// TODO
+pub trait Flatten {
+    /// TODO
+    type Flat<'a>;
+
+    /// TODO
+    fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()>;
+
+    /// TODO
+    fn exhume<'a, R: FlatRead<'a>>(buffer: &'a mut R) -> std::io::Result<Self::Flat<'a>>;
 }
 
 /// A type that can write its contents into a region.
@@ -378,19 +485,27 @@ mod tests {
 
     #[derive(Debug)]
     struct PersonRef<'a> {
-        name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
-        age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
-        hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
+        name: <<String as Containerized>::Region as ReadRegion>::ReadItem<'a>,
+        age: <<u16 as Containerized>::Region as ReadRegion>::ReadItem<'a>,
+        hobbies: <<Vec<String> as Containerized>::Region as ReadRegion>::ReadItem<'a>,
     }
-
-    impl Region for PersonRegion {
+    impl ReadRegion for PersonRegion {
         type ReadItem<'a> = PersonRef<'a> where Self: 'a;
         type Index = (
-            <<String as Containerized>::Region as Region>::Index,
-            <<u16 as Containerized>::Region as Region>::Index,
-            <<Vec<String> as Containerized>::Region as Region>::Index,
+            <<String as Containerized>::Region as ReadRegion>::Index,
+            <<u16 as Containerized>::Region as ReadRegion>::Index,
+            <<Vec<String> as Containerized>::Region as ReadRegion>::Index,
         );
 
+        fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
+            PersonRef {
+                name: self.name_container.index(name),
+                age: self.age_container.index(age),
+                hobbies: self.hobbies.index(hobbies),
+            }
+        }
+    }
+    impl Region for PersonRegion {
         fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
         where
             Self: 'a,
@@ -405,14 +520,6 @@ mod tests {
                 hobbies: <Vec<String> as Containerized>::Region::merge_regions(
                     regions.map(|r| &r.hobbies),
                 ),
-            }
-        }
-
-        fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
-            PersonRef {
-                name: self.name_container.index(name),
-                age: self.age_container.index(age),
-                hobbies: self.hobbies.index(hobbies),
             }
         }
 
@@ -443,7 +550,7 @@ mod tests {
     }
 
     impl CopyOnto<PersonRegion> for &Person {
-        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
+        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as ReadRegion>::Index {
             let name = (&self.name).copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
@@ -463,7 +570,7 @@ mod tests {
     }
 
     impl CopyOnto<PersonRegion> for PersonRef<'_> {
-        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
+        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as ReadRegion>::Index {
             let name = self.name.copy_onto(&mut target.name_container);
             let age = self.age.copy_onto(&mut target.age_container);
             let hobbies = self.hobbies.copy_onto(&mut target.hobbies);
@@ -668,5 +775,47 @@ mod tests {
         c.copy(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+    }
+
+    #[test]
+    fn test_flatten_slice() {
+        let mut buffer = Vec::new();
+        let mut write = DefaultFlatWrite::new(&mut buffer);
+
+        let mut region = OwnedRegion::default();
+        let index = "abc".as_bytes().copy_onto(&mut region);
+
+        region.entomb(&mut write).unwrap();
+
+        println!("{:?}", buffer);
+
+        let mut read = BufferFlatRead::new(&buffer[..]);
+
+        let flat = <OwnedRegion<u8>>::exhume(&mut read).unwrap();
+        assert_eq!("abc".as_bytes(), flat.index(index));
+    }
+
+    #[test]
+    fn test_flatten_string() {
+        // let mut buffer = Vec::new();
+        // let mut write = DefaultFlatWrite::new(&mut buffer);
+        //
+        // let mut region = <StringRegion>::default();
+        // let index = "abc".copy_onto(&mut region);
+        //
+        // region.entomb(&mut write).unwrap();
+        //
+        // println!("{:?}", buffer);
+
+        let buffer = &[3, 0, 0, 0, 0, 0, 0, 0, 96, 97, 98];
+        let index = (0, 3);
+
+        let mut read = BufferFlatRead::new(&buffer[..]);
+
+        let flat = <StringRegion>::exhume(&mut read).unwrap();
+        {
+            let _recovered = flat.index(index);
+            // assert_eq!("abc", recovered);
+        }
     }
 }

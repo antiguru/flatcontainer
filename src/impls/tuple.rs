@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, ReadRegion, Region, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -23,27 +23,33 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
-            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
+            impl<$($name: ReadRegion),*> ReadRegion for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as ReadRegion>::Index: crate::Index),*
             {
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
 
                 type Index = ($($name::Index,)*);
-
-                fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
-                where
-                    Self: 'a {
-                    Self {
-                        $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
-                    }
-                }
 
                 #[inline] fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
                     let ($($name,)*) = index;
                     (
                         $(self.[<container $name>].index($name),)*
                     )
+                }
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
+            where
+               $(<$name as ReadRegion>::Index: crate::Index),*
+            {
+                fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+                where
+                    Self: 'a {
+                    Self {
+                        $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
+                    }
                 }
 
                 #[inline(always)]
@@ -73,7 +79,7 @@ macro_rules! tuple_flatcontainer {
                     $($name: CopyOnto<[<$name _C>]>),*
             {
                 fn copy_onto(self, target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>)
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as ReadRegion>::Index {
                     let ($($name,)*) = self;
                     ($($name.copy_onto(&mut target.[<container $name>]),)*)
                 }
@@ -89,7 +95,7 @@ macro_rules! tuple_flatcontainer {
             {
                 #[inline(always)]
                 fn copy_onto(self, target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>)
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as ReadRegion>::Index {
                     let ($($name,)*) = self;
                     ($($name.copy_onto(&mut target.[<container $name>]),)*)
                 }
@@ -162,7 +168,7 @@ cfg_if::cfg_if! {
 #[cfg(test)]
 mod tests {
     use crate::impls::tuple::TupleABCRegion;
-    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+    use crate::{CopyOnto, MirrorRegion, ReadRegion, Region, StringRegion};
 
     #[test]
     fn test_tuple() {

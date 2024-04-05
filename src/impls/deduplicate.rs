@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{CopyOnto, Region};
+use crate::{CopyOnto, ReadRegion, Region};
 
 /// A region to deduplicate consecutive equal items.
 ///
@@ -20,7 +20,7 @@ use crate::{CopyOnto, Region};
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct CollapseSequence<R: Region> {
+pub struct CollapseSequence<R: ReadRegion> {
     /// Inner region.
     inner: R,
     /// The index of the last pushed item.
@@ -35,11 +35,16 @@ impl<R: Region> Default for CollapseSequence<R> {
         }
     }
 }
-
-impl<R: Region> Region for CollapseSequence<R> {
+impl<R: ReadRegion> ReadRegion for CollapseSequence<R> {
     type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
     type Index = R::Index;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.inner.index(index)
+    }
+}
+
+impl<R: Region> Region for CollapseSequence<R> {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -48,10 +53,6 @@ impl<R: Region> Region for CollapseSequence<R> {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
             last_index: None,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.inner.index(index)
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -76,7 +77,10 @@ impl<R: Region, T: CopyOnto<R>> CopyOnto<CollapseSequence<R>> for T
 where
     for<'a> T: PartialEq<R::ReadItem<'a>>,
 {
-    fn copy_onto(self, target: &mut CollapseSequence<R>) -> <CollapseSequence<R> as Region>::Index {
+    fn copy_onto(
+        self,
+        target: &mut CollapseSequence<R>,
+    ) -> <CollapseSequence<R> as ReadRegion>::Index {
         if let Some(last_index) = target.last_index {
             if self == target.inner.index(last_index) {
                 return last_index;
@@ -109,7 +113,7 @@ where
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct ConsecutiveOffsetPairs<R, O = Vec<usize>>
 where
-    R: Region<Index = (usize, usize)>,
+    R: ReadRegion<Index = (usize, usize)>,
     O: OffsetContainer<usize>,
 {
     /// Wrapped region
@@ -134,15 +138,24 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
     }
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
+impl<R: ReadRegion<Index = (usize, usize)>, O: OffsetContainer<usize>> ReadRegion
     for ConsecutiveOffsetPairs<R, O>
 {
     type ReadItem<'a> = R::ReadItem<'a>
-    where
-        Self: 'a;
+        where
+            Self: 'a;
 
     type Index = usize;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.inner
+            .index((self.offsets.index(index), self.offsets.index(index + 1)))
+    }
+}
+
+impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
+    for ConsecutiveOffsetPairs<R, O>
+{
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -154,11 +167,6 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
             offsets,
             last_index: 0,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.inner
-            .index((self.offsets.index(index), self.offsets.index(index + 1)))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -189,7 +197,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R
     fn copy_onto(
         self,
         target: &mut ConsecutiveOffsetPairs<R, O>,
-    ) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {
+    ) -> <ConsecutiveOffsetPairs<R, O> as ReadRegion>::Index {
         let index = self.copy_onto(&mut target.inner);
         debug_assert_eq!(index.0, target.last_index);
         target.last_index = index.1;

@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, Index, ReadRegion, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -39,23 +39,23 @@ impl<T> Debug for MirrorRegion<T> {
         write!(f, "MirrorRegion<{}>", std::any::type_name::<T>())
     }
 }
-
-impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
+impl<T: Index> ReadRegion for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        index
+    }
+}
+
+impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self::default()
     }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index
-    }
-
     #[inline(always)]
     fn reserve_regions<'a, I>(&mut self, _regions: I)
     where

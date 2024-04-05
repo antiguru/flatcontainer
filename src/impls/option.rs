@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, ReadRegion, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -30,11 +30,17 @@ impl<T: Containerized> Containerized for Option<T> {
 pub struct OptionRegion<R> {
     inner: R,
 }
-
-impl<R: Region> Region for OptionRegion<R> {
+impl<R: ReadRegion> ReadRegion for OptionRegion<R> {
     type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        index.map(|t| self.inner.index(t))
+    }
+}
+
+impl<R: Region> Region for OptionRegion<R> {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -42,11 +48,6 @@ impl<R: Region> Region for OptionRegion<R> {
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index.map(|t| self.inner.index(t))
     }
 
     #[inline]
@@ -74,7 +75,7 @@ where
     T: CopyOnto<TR>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
+    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as ReadRegion>::Index {
         self.map(|t| t.copy_onto(&mut target.inner))
     }
 }
@@ -85,7 +86,7 @@ where
     &'a T: CopyOnto<TR>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
+    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as ReadRegion>::Index {
         self.as_ref().map(|t| t.copy_onto(&mut target.inner))
     }
 }

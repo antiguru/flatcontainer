@@ -7,7 +7,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, CopyOnto, ReadRegion, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Vec<T> {
     type Region = SliceRegion<T::Region>;
@@ -52,26 +52,17 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SliceRegion<C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
+pub struct SliceRegion<C: ReadRegion, O: OffsetContainer<C::Index> = Vec<<C as ReadRegion>::Index>>
+{
     /// Container of slices.
     slices: O,
     /// Inner region.
     inner: C,
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
+impl<C: ReadRegion, O: OffsetContainer<C::Index>> ReadRegion for SliceRegion<C, O> {
     type ReadItem<'a> = ReadSlice<'a, C, O> where Self: 'a;
     type Index = (usize, usize);
-
-    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
-    where
-        Self: 'a,
-    {
-        Self {
-            slices: O::default(),
-            inner: C::merge_regions(regions.map(|r| &r.inner)),
-        }
-    }
 
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
@@ -79,6 +70,18 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
             region: self,
             start,
             end,
+        }
+    }
+}
+
+impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
+    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+    where
+        Self: 'a,
+    {
+        Self {
+            slices: O::default(),
+            inner: C::merge_regions(regions.map(|r| &r.inner)),
         }
     }
 
@@ -115,13 +118,17 @@ impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {
 }
 
 /// A helper to read data out of a slice region.
-pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
+pub struct ReadSlice<
+    'a,
+    C: ReadRegion,
+    O: OffsetContainer<C::Index> = Vec<<C as ReadRegion>::Index>,
+> {
     region: &'a SliceRegion<C, O>,
     start: usize,
     end: usize,
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
+impl<C: ReadRegion, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     /// Read the n-th item from the underlying region.
     ///
     /// # Panics
@@ -162,7 +169,7 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Debug for ReadSlice<'_, C, O>
+impl<C: ReadRegion, O: OffsetContainer<C::Index>> Debug for ReadSlice<'_, C, O>
 where
     for<'a> C::ReadItem<'a>: Debug,
 {
@@ -171,16 +178,16 @@ where
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
+impl<C: ReadRegion, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
+impl<C: ReadRegion, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
+impl<'a, C: ReadRegion, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
     type Item = C::ReadItem<'a>;
     type IntoIter = ReadSliceIter<'a, C, O>;
 
@@ -191,12 +198,12 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a,
 
 /// An iterator over the items read from a slice region.
 #[derive(Debug, Clone)]
-pub struct ReadSliceIter<'a, C: Region, O: OffsetContainer<C::Index>>(
+pub struct ReadSliceIter<'a, C: ReadRegion, O: OffsetContainer<C::Index>>(
     &'a SliceRegion<C, O>,
     Range<usize>,
 );
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a, C, O> {
+impl<'a, C: ReadRegion, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a, C, O> {
     type Item = C::ReadItem<'a>;
 
     #[inline]
@@ -214,7 +221,7 @@ where
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as ReadRegion>::Index {
         let start = target.slices.len();
         target
             .slices
@@ -245,7 +252,7 @@ where
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as ReadRegion>::Index {
         let start = target.slices.len();
         target
             .slices
@@ -261,7 +268,7 @@ where
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as ReadRegion>::Index {
         self.as_slice().copy_onto(target)
     }
 }
@@ -273,7 +280,7 @@ where
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as ReadRegion>::Index {
         self.as_slice().copy_onto(target)
     }
 }
@@ -299,7 +306,7 @@ where
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as ReadRegion>::Index {
         let ReadSlice { region, start, end } = self;
         let start_len = target.slices.len();
         for index in start..end {
@@ -318,7 +325,7 @@ where
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as ReadRegion>::Index {
         self.as_slice().copy_onto(target)
     }
 }
@@ -330,7 +337,7 @@ where
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as ReadRegion>::Index {
         self.as_slice().copy_onto(target)
     }
 }
@@ -342,7 +349,7 @@ where
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
+    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as ReadRegion>::Index {
         self.as_slice().copy_onto(target)
     }
 }
