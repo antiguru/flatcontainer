@@ -24,7 +24,7 @@ use crate::{CopyOnto, OwnedRegion, Region};
 /// Copy a table-like structure:
 /// ```
 /// # use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-/// # use flatcontainer::{ColumnsRegion, CopyOnto, Region, StringRegion};
+/// # use flatcontainer::{ColumnsRegion, CopyOnto, ReadRegion, Region, StringRegion};
 /// let data = [
 ///     vec![],
 ///     vec!["1"],

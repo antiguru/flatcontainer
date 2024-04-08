@@ -2,8 +2,11 @@
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
-use crate::{CopyIter, CopyOnto, FlatRead, FlatWrite, Flatten, ReadRegion, Region, ReserveItems};
+use crate::{
+    Bytes, CopyIter, CopyOnto, FlatWrite, Flatten, ReadRegion, Region, ReserveItems, TypedBytes,
+};
 
 /// A container for owned types.
 ///
@@ -15,7 +18,7 @@ use crate::{CopyIter, CopyOnto, FlatRead, FlatWrite, Flatten, ReadRegion, Region
 /// # Examples
 ///
 /// ```
-/// use flatcontainer::{CopyOnto, OwnedRegion, Region};
+/// use flatcontainer::{CopyOnto, OwnedRegion, ReadRegion, Region};
 /// let mut r = <OwnedRegion<_>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -191,30 +194,37 @@ impl<T, J: IntoIterator<Item = T>> ReserveItems<OwnedRegion<T>> for CopyIter<J> 
 }
 
 impl<T: Copy + 'static> Flatten for OwnedRegion<T> {
-    type Flat<'a> = BorrowedRegion<'a, T>;
+    type Flat<S> = BorrowedRegion<S, T>;
     fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
         write.write_lengthened(&self.slices)
     }
 
-    fn exhume<'a, R: FlatRead<'a>>(buffer: &'a mut R) -> std::io::Result<Self::Flat<'a>> {
+    fn exhume<'a, S>(bytes: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
+    where
+        S: Deref<Target = [u8]> + Clone,
+    {
         Ok(BorrowedRegion {
-            slices: buffer.read_lengthened()?,
+            bytes: bytes.read_lengthened(),
         })
     }
 }
 
 /// TODO
-pub struct BorrowedRegion<'a, T> {
-    slices: &'a [T],
+pub struct BorrowedRegion<S, T> {
+    bytes: TypedBytes<S, T>,
 }
 
-impl<'data, T> ReadRegion for BorrowedRegion<'data, T> {
+impl<S, T> ReadRegion for BorrowedRegion<S, T>
+where
+    S: Deref<Target = [u8]>,
+    T: Copy + 'static,
+{
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
-        &self.slices[start..end]
+        &self.bytes.deref()[start..end]
     }
 }
 

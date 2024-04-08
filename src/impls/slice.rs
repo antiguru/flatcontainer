@@ -32,7 +32,7 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 ///
 /// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, Region, SliceRegion};
+/// use flatcontainer::{Containerized, CopyOnto, ReadRegion, Region, SliceRegion};
 /// let mut r = <SliceRegion<<String as Containerized>::Region>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog"

@@ -15,7 +15,7 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 ///
 /// Add results to a result region:
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, Region, ResultRegion};
+/// use flatcontainer::{Containerized, CopyOnto, ReadRegion, Region, ResultRegion};
 /// let mut r =
 ///     <ResultRegion<<() as Containerized>::Region, <String as Containerized>::Region>>::default();
 ///

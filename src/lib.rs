@@ -2,6 +2,9 @@
 #![deny(missing_docs)]
 
 use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
+use std::ops::Deref;
+use std::rc::Rc;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -94,8 +97,11 @@ pub struct DefaultFlatWrite<W: std::io::Write> {
     offset: usize,
 }
 
+/// TODO
+const ALIGNMENET: usize = 16;
+
 impl<W: std::io::Write> DefaultFlatWrite<W> {
-    const NULLS: [u8; 32] = [0; 32];
+    const NULLS: [u8; ALIGNMENET - 1] = [0; ALIGNMENET - 1];
 
     /// TODO
     pub fn new(inner: W) -> Self {
@@ -136,52 +142,97 @@ impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
 }
 
 /// TODO
-pub trait FlatRead<'a> {
-    /// TODO
-    fn read_lengthened<T: Copy + 'static>(&mut self) -> std::io::Result<&'a [T]>;
-    /// TODO
-    fn read_unit<T: Copy + 'static>(&mut self) -> std::io::Result<&'a T>;
+#[derive(Clone, Copy, Debug)]
+pub struct DerefWrapper<S>(S);
+
+impl Deref for DerefWrapper<Rc<Vec<u8>>> {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref().deref()
+    }
 }
 
 /// TODO
-pub struct BufferFlatRead<'a> {
-    buffer: &'a [u8],
+pub struct Bytes<S> {
+    buffer: S,
+    start: usize,
+    end: usize,
 }
 
-impl<'a> BufferFlatRead<'a> {
+impl<S> Bytes<S>
+where
+    S: Deref<Target = [u8]> + Clone,
+{
     /// TODO
-    pub fn new(buffer: &'a [u8]) -> Self {
-        Self { buffer }
+    pub fn new(buffer: S, start: usize, end: usize) -> Self {
+        Self { buffer, start, end }
+    }
+
+    /// TODO
+    pub fn read_lengthened<T: Copy + 'static>(&mut self) -> TypedBytes<S, T> {
+        let len = self.read_unit::<usize>();
+        let (head, _data, _tail) = unsafe { self.buffer[self.start..].align_to::<T>() };
+        let end = self.start + head.len() + len * std::mem::size_of::<T>();
+        let bytes = Self::new(self.buffer.clone(), self.start + head.len(), end);
+        self.start = end;
+        TypedBytes {
+            bytes,
+            _marker: PhantomData,
+        }
+    }
+
+    /// TODO
+    pub fn read_unit<T: Copy + 'static>(&mut self) -> T {
+        let (head, data, _tail) = unsafe { self.buffer[self.start..].align_to::<T>() };
+        self.start += head.len() + std::mem::size_of::<T>();
+        data[0]
     }
 }
 
-impl<'a> FlatRead<'a> for BufferFlatRead<'a> {
-    fn read_lengthened<T: Copy + 'static>(&mut self) -> std::io::Result<&'a [T]> {
-        let len = *self.read_unit::<usize>()?;
-        let (head, data, _tail) = unsafe { self.buffer.align_to::<T>() };
-        let result = &data[..len];
-        self.buffer = &self.buffer[head.len() + result.len() * std::mem::size_of::<T>()..];
-        Ok(result)
-    }
+impl<S> Deref for Bytes<S>
+where
+    S: Deref<Target = [u8]>,
+{
+    type Target = [u8];
 
-    fn read_unit<T: Copy + 'static>(&mut self) -> std::io::Result<&'a T> {
-        let (head, data, _tail) = unsafe { self.buffer.align_to::<T>() };
-        let result = &data[0];
-        self.buffer = &self.buffer[head.len() + std::mem::size_of::<T>()..];
-        Ok(result)
+    fn deref(&self) -> &Self::Target {
+        &self.buffer[self.start..self.end]
+    }
+}
+
+/// TODO
+pub struct TypedBytes<S, T> {
+    bytes: Bytes<S>,
+    _marker: PhantomData<T>,
+}
+
+impl<S, T> Deref for TypedBytes<S, T>
+where
+    S: Deref<Target = [u8]>,
+    T: Copy + 'static,
+{
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        let (head, data, _tail) = unsafe { self.bytes.deref().align_to::<T>() };
+        assert_eq!(head.len(), 0);
+        data
     }
 }
 
 /// TODO
 pub trait Flatten {
     /// TODO
-    type Flat<'a>;
+    type Flat<S>;
 
     /// TODO
     fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()>;
 
     /// TODO
-    fn exhume<'a, R: FlatRead<'a>>(buffer: &'a mut R) -> std::io::Result<Self::Flat<'a>>;
+    fn exhume<'a, S>(buffer: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
+    where
+        S: Deref<Target = [u8]> + Clone;
 }
 
 /// A type that can write its contents into a region.
@@ -417,6 +468,7 @@ pub struct CopyIter<I>(pub I);
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
     use crate::impls::tuple::TupleARegion;
+    use std::rc::Rc;
 
     use super::*;
 
@@ -788,8 +840,9 @@ mod tests {
         region.entomb(&mut write).unwrap();
 
         println!("{:?}", buffer);
+        let end = buffer.len();
 
-        let mut read = BufferFlatRead::new(&buffer[..]);
+        let mut read = Bytes::new(&buffer[..], 0, end);
 
         let flat = <OwnedRegion<u8>>::exhume(&mut read).unwrap();
         assert_eq!("abc".as_bytes(), flat.index(index));
@@ -797,25 +850,22 @@ mod tests {
 
     #[test]
     fn test_flatten_string() {
-        // let mut buffer = Vec::new();
-        // let mut write = DefaultFlatWrite::new(&mut buffer);
-        //
-        // let mut region = <StringRegion>::default();
-        // let index = "abc".copy_onto(&mut region);
-        //
-        // region.entomb(&mut write).unwrap();
-        //
-        // println!("{:?}", buffer);
+        let mut buffer = Vec::new();
+        let mut write = DefaultFlatWrite::new(&mut buffer);
 
-        let buffer = &[3, 0, 0, 0, 0, 0, 0, 0, 96, 97, 98];
-        let index = (0, 3);
+        let mut region = <StringRegion>::default();
+        let index = "abc".copy_onto(&mut region);
+        let index2 = "defghij".copy_onto(&mut region);
 
-        let mut read = BufferFlatRead::new(&buffer[..]);
+        region.entomb(&mut write).unwrap();
+
+        println!("{:?}", buffer);
+
+        let end = buffer.len();
+        let mut read = Bytes::new(DerefWrapper(Rc::new(buffer)), 0, end);
 
         let flat = <StringRegion>::exhume(&mut read).unwrap();
-        {
-            let _recovered = flat.index(index);
-            // assert_eq!("abc", recovered);
-        }
+        assert_eq!("abc", flat.index(index));
+        assert_eq!("defghij", flat.index(index2));
     }
 }

@@ -4,9 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{
-    Containerized, CopyOnto, FlatRead, FlatWrite, Flatten, ReadRegion, Region, ReserveItems,
-};
+use crate::{Bytes, Containerized, CopyOnto, FlatWrite, Flatten, ReadRegion, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -20,7 +18,7 @@ use crate::{
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{Containerized, CopyOnto, OwnedRegion, ReadRegion, Region, StringRegion};
 /// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -89,13 +87,16 @@ where
     // for<'a, 'b> R::Flat<'a>: ReadRegion<ReadItem<'b> = &'b [u8]> + 'b,
     R: Flatten,
 {
-    type Flat<'a> = StringRegion<R::Flat<'a>>;
+    type Flat<S> = StringRegion<R::Flat<S>>;
 
     fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
         self.inner.entomb(write)
     }
 
-    fn exhume<'a, Read: FlatRead<'a>>(buffer: &'a mut Read) -> std::io::Result<Self::Flat<'a>> {
+    fn exhume<'a, S>(buffer: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
+    where
+        S: std::ops::Deref<Target = [u8]> + Clone,
+    {
         R::exhume(buffer).map(|inner| StringRegion { inner })
     }
 }
