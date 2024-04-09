@@ -4,7 +4,6 @@
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::rc::Rc;
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
@@ -95,6 +94,7 @@ pub trait FlatWrite {
 pub struct DefaultFlatWrite<W: std::io::Write> {
     inner: W,
     offset: usize,
+    alignment: usize,
 }
 
 /// TODO
@@ -105,14 +105,25 @@ impl<W: std::io::Write> DefaultFlatWrite<W> {
 
     /// TODO
     pub fn new(inner: W) -> Self {
-        Self { inner, offset: 0 }
+        Self {
+            inner,
+            offset: 0,
+            alignment: 0,
+        }
     }
 
     fn pad<T>(&mut self) -> std::io::Result<()> {
         let padding = (self.offset as *const u8).align_offset(std::mem::size_of::<T>());
+        self.alignment = std::cmp::max(self.alignment, std::mem::align_of::<T>());
         self.inner.write_all(&Self::NULLS[..padding])?;
         self.offset += padding;
         Ok(())
+    }
+
+    /// TODO
+    pub fn finish(mut self) -> std::io::Result<()> {
+        let alignment = self.alignment;
+        self.write_unit(&alignment)
     }
 }
 
@@ -145,7 +156,21 @@ impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
 #[derive(Clone, Copy, Debug)]
 pub struct DerefWrapper<S>(S);
 
-impl Deref for DerefWrapper<Rc<Vec<u8>>> {
+impl<S> Deref for DerefWrapper<std::rc::Rc<S>>
+where
+    S: Deref<Target = [u8]>,
+{
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref().deref()
+    }
+}
+
+impl<S> Deref for DerefWrapper<std::sync::Arc<S>>
+where
+    S: Deref<Target = [u8]>,
+{
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -166,6 +191,13 @@ where
 {
     /// TODO
     pub fn new(buffer: S, start: usize, end: usize) -> Self {
+        #[repr(align(16))]
+        struct Align;
+
+        if start == 0 {
+            let (head, _, _) = unsafe { buffer.deref().align_to::<Align>() };
+            assert!(head.is_empty());
+        }
         Self { buffer, start, end }
     }
 
@@ -838,6 +870,7 @@ mod tests {
         let index = "abc".as_bytes().copy_onto(&mut region);
 
         region.entomb(&mut write).unwrap();
+        write.finish().unwrap();
 
         println!("{:?}", buffer);
         let end = buffer.len();
@@ -858,6 +891,8 @@ mod tests {
         let index2 = "defghij".copy_onto(&mut region);
 
         region.entomb(&mut write).unwrap();
+        write.write_unit(&0x11223344566778899u128).unwrap();
+        write.finish().unwrap();
 
         println!("{:?}", buffer);
 
