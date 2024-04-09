@@ -98,10 +98,10 @@ pub struct DefaultFlatWrite<W: std::io::Write> {
 }
 
 /// TODO
-const ALIGNMENET: usize = 16;
+const ALIGNMENT: usize = 64;
 
 impl<W: std::io::Write> DefaultFlatWrite<W> {
-    const NULLS: [u8; ALIGNMENET - 1] = [0; ALIGNMENET - 1];
+    const NULLS: [u8; ALIGNMENT - 1] = [0; ALIGNMENT - 1];
 
     /// TODO
     pub fn new(inner: W) -> Self {
@@ -113,7 +113,7 @@ impl<W: std::io::Write> DefaultFlatWrite<W> {
     }
 
     fn pad<T>(&mut self) -> std::io::Result<()> {
-        let padding = (self.offset as *const u8).align_offset(std::mem::size_of::<T>());
+        let padding = (self.offset as *const u8).align_offset(std::mem::align_of::<T>());
         self.alignment = std::cmp::max(self.alignment, std::mem::align_of::<T>());
         self.inner.write_all(&Self::NULLS[..padding])?;
         self.offset += padding;
@@ -122,16 +122,33 @@ impl<W: std::io::Write> DefaultFlatWrite<W> {
 
     /// TODO
     pub fn finish(mut self) -> std::io::Result<()> {
-        let alignment = self.alignment;
+        let alignment: u8 = self
+            .alignment
+            .next_power_of_two()
+            .trailing_zeros()
+            .try_into()
+            .unwrap();
         self.write_unit(&alignment)
     }
 }
 
 impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
     fn write_lengthened<T: Copy + 'static>(&mut self, data: &[T]) -> std::io::Result<()> {
+        println!(
+            "write_lengthened data len: {}*{}",
+            data.len(),
+            std::mem::size_of::<T>()
+        );
         self.write_unit(&data.len())?;
         self.pad::<T>()?;
-        let data = unsafe { std::mem::transmute(data) };
+        let data: &[u8] = unsafe {
+            std::slice::from_raw_parts(data.as_ptr().cast(), data.len() * std::mem::size_of::<T>())
+        };
+        println!(
+            "write_lengthened data len: {}*{}",
+            data.len(),
+            std::mem::size_of::<u8>()
+        );
         self.inner.write_all(data)?;
         self.offset += data.len();
         Ok(())
@@ -190,14 +207,25 @@ where
     S: Deref<Target = [u8]> + Clone,
 {
     /// TODO
-    pub fn new(buffer: S, start: usize, end: usize) -> Self {
-        #[repr(align(16))]
-        struct Align;
-
-        if start == 0 {
-            let (head, _, _) = unsafe { buffer.deref().align_to::<Align>() };
-            assert!(head.is_empty());
+    pub fn new_aligned(buffer: S, start: usize, end: usize) -> Self {
+        if end - start > 1 {
+            println!("asdf");
+            let alignment = 1 << Bytes::new(&buffer.deref()[end - 1..], 0, 1).read_unit::<u8>();
+            println!("alignment: {alignment}");
+            let offset = buffer.deref()[start..].as_ptr().align_offset(alignment);
+            assert_eq!(
+                offset,
+                0,
+                "Unaliged memory: {:?} off by {} bytes",
+                buffer.deref().as_ptr(),
+                offset
+            );
         }
+        Self { buffer, start, end }
+    }
+
+    /// TODO
+    pub fn new(buffer: S, start: usize, end: usize) -> Self {
         Self { buffer, start, end }
     }
 
@@ -248,7 +276,7 @@ where
 
     fn deref(&self) -> &Self::Target {
         let (head, data, _tail) = unsafe { self.bytes.deref().align_to::<T>() };
-        assert_eq!(head.len(), 0);
+        assert_eq!(head.len(), 0, "Unaligned memory");
         data
     }
 }
@@ -500,6 +528,7 @@ pub struct CopyIter<I>(pub I);
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
     use crate::impls::tuple::TupleARegion;
+    use std::io::Write;
     use std::rc::Rc;
 
     use super::*;
@@ -875,7 +904,7 @@ mod tests {
         println!("{:?}", buffer);
         let end = buffer.len();
 
-        let mut read = Bytes::new(&buffer[..], 0, end);
+        let mut read = Bytes::new_aligned(&buffer[..], 0, end);
 
         let flat = <OwnedRegion<u8>>::exhume(&mut read).unwrap();
         assert_eq!("abc".as_bytes(), flat.index(index));
@@ -890,17 +919,30 @@ mod tests {
         let index = "abc".copy_onto(&mut region);
         let index2 = "defghij".copy_onto(&mut region);
 
+        let mut other_region = OwnedRegion::default();
+        let other_index = [0x11223344566778899u128; 16].copy_onto(&mut other_region);
+
         region.entomb(&mut write).unwrap();
-        write.write_unit(&0x11223344566778899u128).unwrap();
+        other_region.entomb(&mut write).unwrap();
         write.finish().unwrap();
+
+        let mut aligned_buffer = vec![0u8; buffer.len() + ALIGNMENT];
+        let offset = aligned_buffer.as_ptr().align_offset(ALIGNMENT);
+        println!("aligning to offset {offset}");
+        (&mut aligned_buffer[offset..])
+            .write_all(&buffer[..])
+            .unwrap();
 
         println!("{:?}", buffer);
 
         let end = buffer.len();
-        let mut read = Bytes::new(DerefWrapper(Rc::new(buffer)), 0, end);
+        let mut read =
+            Bytes::new_aligned(DerefWrapper(Rc::new(aligned_buffer)), offset, end + offset);
 
         let flat = <StringRegion>::exhume(&mut read).unwrap();
         assert_eq!("abc", flat.index(index));
         assert_eq!("defghij", flat.index(index2));
+        let other_flat = <OwnedRegion<u128>>::exhume(&mut read).unwrap();
+        assert_eq!(other_flat.index(other_index), [0x11223344566778899u128; 16]);
     }
 }
