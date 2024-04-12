@@ -125,7 +125,6 @@ fn vec_u_vn_s_copy_region_column(bencher: &mut Bencher) {
                     CollapseSequence<OwnedRegion<_>>,
                     CollapseSequence<StringRegion>,
                 >,
-                _,
             >,
         >,
         _,
