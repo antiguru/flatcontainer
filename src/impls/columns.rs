@@ -48,7 +48,7 @@ use crate::{CopyOnto, OwnedRegion, Region};
 ///     assert!(row.iter().copied().eq(r.index(index).iter()));
 /// }
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",

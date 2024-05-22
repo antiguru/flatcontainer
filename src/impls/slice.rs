@@ -190,11 +190,17 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a,
 }
 
 /// An iterator over the items read from a slice region.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ReadSliceIter<'a, C: Region, O: OffsetContainer<C::Index>>(
     &'a SliceRegion<C, O>,
     Range<usize>,
 );
+
+impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceIter<'a, C, O> {
+    fn clone(&self) -> Self {
+        Self(self.0, self.1.clone())
+    }
+}
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a, C, O> {
     type Item = C::ReadItem<'a>;
@@ -358,6 +364,23 @@ where
         I: Iterator<Item = Self> + Clone,
     {
         ReserveItems::reserve_items(target, items.map(<[T; N]>::as_slice));
+    }
+}
+
+impl<R, O> ReserveItems<SliceRegion<R, O>> for ReadSlice<'_, R, O>
+where
+    for<'a> R::ReadItem<'a>: ReserveItems<R>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
+{
+    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
+    where
+        I: Iterator<Item = Self> + Clone,
+    {
+        target
+            .slices
+            .reserve(items.clone().map(|read_slice| read_slice.len()).sum());
+        ReserveItems::reserve_items(&mut target.inner, items.flatten());
     }
 }
 

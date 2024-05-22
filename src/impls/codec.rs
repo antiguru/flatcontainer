@@ -71,7 +71,7 @@ fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
 }
 
 /// A region that encodes its data in a codec `C`.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CodecRegion<C: Codec, R = OwnedRegion<u8>> {
     inner: R,
     codec: C,

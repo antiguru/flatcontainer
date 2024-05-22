@@ -109,6 +109,22 @@ macro_rules! tuple_flatcontainer {
                         tuple_flatcontainer!(reserve_items target items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
                 }
             }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]: Region ),*>
+                ReserveItems<[<Tuple $($name)* Region>]<$([<$name _C>]),*>>
+                for ($($name,)*)
+                where
+                    $($name: ReserveItems<[<$name _C>]>),*
+            {
+                fn reserve_items<It>(target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>, items: It)
+                where
+                    It: Iterator<Item = Self> + Clone
+                {
+                        tuple_flatcontainer!(reserve_items_owned target items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                }
+            }
         }
     );
     (reserve_items $target:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
@@ -120,6 +136,15 @@ macro_rules! tuple_flatcontainer {
         }
     };
     (reserve_items $target:ident $items:ident @ $($num:tt)*) => {};
+    (reserve_items_owned $target:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
+        paste! {
+            ReserveItems::reserve_items(&mut $target.[<container $name0>], $items.clone().map(|i| {
+                i.$num0
+            }));
+            tuple_flatcontainer!(reserve_items_owned $target $items $($name)* @ $($num)*);
+        }
+    };
+    (reserve_items_owned $target:ident $items:ident @ $($num:tt)*) => {};
 }
 
 tuple_flatcontainer!(A);
@@ -162,7 +187,7 @@ cfg_if::cfg_if! {
 #[cfg(test)]
 mod tests {
     use crate::impls::tuple::TupleABCRegion;
-    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+    use crate::{CopyOnto, FlatStack, MirrorRegion, Region, StringRegion};
 
     #[test]
     fn test_tuple() {
@@ -220,5 +245,13 @@ mod tests {
         assert!(size > 0);
         assert!(cap > 0);
         assert!(cnt > 0);
+    }
+    #[test]
+    fn test_reserve_items() {
+        let mut c = FlatStack::default_impl::<(usize, String, Vec<String>)>();
+        c.copy((1, format!("Hello"), &["abc"]));
+
+        let mut c2 = FlatStack::default_impl::<(usize, String, Vec<String>)>();
+        c2.reserve_items(c.iter());
     }
 }

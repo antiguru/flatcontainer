@@ -278,6 +278,15 @@ impl<'a, R: Region> Iterator for Iter<'a, R> {
 
 impl<R: Region> ExactSizeIterator for Iter<'_, R> {}
 
+impl<R: Region> Clone for Iter<'_, R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            region: self.region,
+        }
+    }
+}
+
 impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
@@ -287,14 +296,12 @@ impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
     }
 }
 
-impl<R: Region> Clone for FlatStack<R>
-where
-    for<'a> R::ReadItem<'a>: CopyOnto<R>,
-{
+impl<R: Region + Clone> Clone for FlatStack<R> {
     fn clone(&self) -> Self {
-        let mut clone = Self::merge_capacity(std::iter::once(self));
-        clone.extend(self.iter());
-        clone
+        Self {
+            region: self.region.clone(),
+            indices: self.indices.clone(),
+        }
     }
 }
 
