@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Index, Region, ReserveItems};
+use crate::{Containerized, Index, Push, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -40,7 +40,7 @@ impl<T> Debug for MirrorRegion<T> {
     }
 }
 
-impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
+impl<T: Index> Region for MirrorRegion<T> {
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
@@ -75,42 +75,42 @@ impl<T: Index + CopyOnto<Self>> Region for MirrorRegion<T> {
     }
 }
 
-impl<T: Index> CopyOnto<MirrorRegion<Self>> for T {
+impl<T: Index> Push<T> for MirrorRegion<T> {
     #[inline(always)]
-    fn copy_onto(self, _target: &mut MirrorRegion<Self>) -> T {
-        self
+    fn push(&mut self, item: T) -> T {
+        item
     }
 }
 
-impl<T: Index> CopyOnto<MirrorRegion<T>> for &T {
+impl<T: Index> Push<&T> for MirrorRegion<T> {
     #[inline(always)]
-    fn copy_onto(self, _target: &mut MirrorRegion<T>) -> T {
-        *self
+    fn push(&mut self, item: &T) -> T {
+        *item
     }
 }
 
-impl<T: Index> CopyOnto<MirrorRegion<T>> for &&T {
+impl<T: Index> Push<&&T> for MirrorRegion<T> {
     #[inline(always)]
-    fn copy_onto(self, _target: &mut MirrorRegion<T>) -> T {
-        **self
+    fn push(&mut self, item: &&T) -> T {
+        **item
     }
 }
 
-impl<T: Index> ReserveItems<MirrorRegion<T>> for T {
+impl<T: Index> ReserveItems<T> for MirrorRegion<T> {
     #[inline(always)]
-    fn reserve_items<I>(_target: &mut MirrorRegion<T>, _items: I)
+    fn reserve_items<I>(&mut self, _items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = T> + Clone,
     {
         // No storage
     }
 }
 
-impl<T: Index> ReserveItems<MirrorRegion<T>> for &T {
+impl<'a, T: Index> ReserveItems<&'a T> for MirrorRegion<T> {
     #[inline(always)]
-    fn reserve_items<I>(_target: &mut MirrorRegion<T>, _items: I)
+    fn reserve_items<I>(&mut self, _items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a T> + Clone,
     {
         // No storage
     }

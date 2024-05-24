@@ -308,14 +308,14 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-    use crate::{CopyOnto, Region, SliceRegion, StringRegion};
+    use crate::{Push, Region, SliceRegion, StringRegion};
 
     use super::*;
 
     #[test]
     fn test_offset_optimized() {
-        fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
-            item.copy_onto(r)
+        fn copy<R: Region + Push<T>, T>(r: &mut R, item: T) -> R::Index {
+            r.push(item)
         }
 
         let mut r = SliceRegion::<

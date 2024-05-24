@@ -11,7 +11,7 @@ flatcontainer = "0.1"
 ## Example
 
 ```rust
-use flatcontainer::{FlatStack, CopyOnto};
+use flatcontainer::FlatStack;
 fn main() {
   let r: Result<_, u16> = Ok("abc");
   let mut c = FlatStack::default_impl::<Result<&str, u16>>();

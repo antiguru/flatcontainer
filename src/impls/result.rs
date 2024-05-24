@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, Push, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -15,12 +15,12 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 ///
 /// Add results to a result region:
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, Region, ResultRegion};
+/// use flatcontainer::{Containerized, Push, Region, ResultRegion};
 /// let mut r =
 ///     <ResultRegion<<() as Containerized>::Region, <String as Containerized>::Region>>::default();
 ///
-/// let ok_index = Result::<(), String>::Ok(()).copy_onto(&mut r);
-/// let err_index = Result::<(), String>::Err("Error".to_string()).copy_onto(&mut r);
+/// let ok_index = r.push(Result::<(), String>::Ok(()));
+/// let err_index = r.push(Result::<(), String>::Err("Error".to_string()));
 ///
 /// assert_eq!(Ok(()), r.index(ok_index));
 /// assert_eq!(Err("Error"), r.index(err_index));
@@ -80,60 +80,53 @@ where
     }
 }
 
-impl<T, TC, E, EC> CopyOnto<ResultRegion<TC, EC>> for Result<T, E>
+impl<T, TC, E, EC> Push<Result<T, E>> for ResultRegion<TC, EC>
 where
     TC: Region,
     EC: Region,
-    T: CopyOnto<TC>,
-    E: CopyOnto<EC>,
+    TC: Push<T>,
+    EC: Push<E>,
 {
     #[inline]
-    fn copy_onto(
-        self,
-        target: &mut ResultRegion<TC, EC>,
-    ) -> <ResultRegion<TC, EC> as Region>::Index {
-        match self {
-            Ok(t) => Ok(t.copy_onto(&mut target.oks)),
-            Err(e) => Err(e.copy_onto(&mut target.errs)),
+    fn push(&mut self, item: Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
+        match item {
+            Ok(t) => Ok(self.oks.push(t)),
+            Err(e) => Err(self.errs.push(e)),
         }
     }
 }
 
-impl<'a, T: 'a, TC, E: 'a, EC> CopyOnto<ResultRegion<TC, EC>> for &'a Result<T, E>
+impl<'a, T: 'a, TC, E: 'a, EC> Push<&'a Result<T, E>> for ResultRegion<TC, EC>
 where
     TC: Region,
     EC: Region,
-    &'a T: CopyOnto<TC>,
-    &'a E: CopyOnto<EC>,
+    TC: Push<&'a T>,
+    EC: Push<&'a E>,
 {
     #[inline]
-    fn copy_onto(
-        self,
-        target: &mut ResultRegion<TC, EC>,
-    ) -> <ResultRegion<TC, EC> as Region>::Index {
-        match self {
-            Ok(t) => Ok(t.copy_onto(&mut target.oks)),
-            Err(e) => Err(e.copy_onto(&mut target.errs)),
+    fn push(&mut self, item: &'a Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
+        match item {
+            Ok(t) => Ok(self.oks.push(t)),
+            Err(e) => Err(self.errs.push(e)),
         }
     }
 }
 
-impl<'a, T: 'a, TC, E: 'a, EC> ReserveItems<ResultRegion<TC, EC>> for &'a Result<T, E>
+impl<'a, T: 'a, TC, E: 'a, EC> ReserveItems<&'a Result<T, E>> for ResultRegion<TC, EC>
 where
     TC: Region,
     EC: Region,
-    &'a T: ReserveItems<TC>,
-    &'a E: ReserveItems<EC>,
+    TC: ReserveItems<&'a T>,
+    EC: ReserveItems<&'a E>,
 {
-    fn reserve_items<I>(target: &mut ResultRegion<TC, EC>, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a Result<T, E>> + Clone,
     {
-        ReserveItems::reserve_items(
-            &mut target.oks,
-            items.clone().filter_map(|r| r.as_ref().ok()),
-        );
-        ReserveItems::reserve_items(&mut target.errs, items.filter_map(|r| r.as_ref().err()));
+        self.oks
+            .reserve_items(items.clone().filter_map(|r| r.as_ref().ok()));
+        self.errs
+            .reserve_items(items.filter_map(|r| r.as_ref().err()));
     }
 }
 

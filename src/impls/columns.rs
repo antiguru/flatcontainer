@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
 use crate::CopyIter;
-use crate::{CopyOnto, OwnedRegion, Region};
+use crate::{OwnedRegion, Push, Region};
 
 /// A region that can store a variable number of elements per row.
 ///
@@ -24,7 +24,7 @@ use crate::{CopyOnto, OwnedRegion, Region};
 /// Copy a table-like structure:
 /// ```
 /// # use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
-/// # use flatcontainer::{ColumnsRegion, CopyOnto, Region, StringRegion};
+/// # use flatcontainer::{ColumnsRegion, Push, Region, StringRegion};
 /// let data = [
 ///     vec![],
 ///     vec!["1"],
@@ -40,7 +40,7 @@ use crate::{CopyOnto, OwnedRegion, Region};
 /// let mut indices = Vec::with_capacity(data.len());
 ///
 /// for row in &data {
-///     let index = row.copy_onto(&mut r);
+///     let index = r.push(row);
 ///     indices.push(index);
 /// }
 ///
@@ -238,143 +238,138 @@ where
     }
 }
 
-impl<R> CopyOnto<ColumnsRegion<R>> for ReadColumns<'_, R>
+impl<R> Push<ReadColumns<'_, R>> for ColumnsRegion<R>
 where
     R: Region,
-    for<'a> R::ReadItem<'a>: CopyOnto<R>,
+    for<'a> R: Push<<R as Region>::ReadItem<'a>>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<'a, R, T> CopyOnto<ColumnsRegion<R>> for &'a [T]
+impl<'a, R, T> Push<&'a [T]> for ColumnsRegion<R>
 where
     R: Region,
-    &'a T: CopyOnto<R>,
+    R: Push<&'a T>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<R, T, const N: usize> CopyOnto<ColumnsRegion<R>> for [T; N]
+impl<R, T, const N: usize> Push<[T; N]> for ColumnsRegion<R>
 where
-    R: Region,
-    T: CopyOnto<R>,
+    R: Region + Push<T>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .into_iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<'a, R, T, const N: usize> CopyOnto<ColumnsRegion<R>> for &'a [T; N]
+impl<'a, R, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R>
 where
-    R: Region,
-    &'a T: CopyOnto<R>,
+    R: Region + Push<&'a T>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<R, T> CopyOnto<ColumnsRegion<R>> for Vec<T>
+impl<R, T> Push<Vec<T>> for ColumnsRegion<R>
 where
-    R: Region,
-    T: CopyOnto<R>,
+    R: Region + Push<T>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .into_iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<'a, R, T> CopyOnto<ColumnsRegion<R>> for &'a Vec<T>
+impl<'a, R, T> Push<&'a Vec<T>> for ColumnsRegion<R>
 where
-    R: Region,
-    &'a T: CopyOnto<R>,
+    R: Region + Push<&'a T>,
 {
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
-        while target.inner.len() < self.len() {
-            target.inner.push(R::default());
+        while self.inner.len() < item.len() {
+            self.inner.push(R::default());
         }
 
-        let iter = self
+        let iter = item
             .iter()
-            .zip(&mut target.inner)
-            .map(|(value, region)| value.copy_onto(region));
-        CopyIter(iter).copy_onto(&mut target.indices)
+            .zip(&mut self.inner)
+            .map(|(value, region)| region.push(value));
+        self.indices.push(CopyIter(iter))
     }
 }
 
-impl<R, T, I> CopyOnto<ColumnsRegion<R>> for CopyIter<I>
+impl<R, T, I> Push<CopyIter<I>> for ColumnsRegion<R>
 where
-    R: Region,
-    T: CopyOnto<R>,
+    R: Region + Push<T>,
     I: IntoIterator<Item = T>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut ColumnsRegion<R>) -> <ColumnsRegion<R> as Region>::Index {
-        let iter = self.0.into_iter().enumerate().map(|(index, value)| {
+    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R> as Region>::Index {
+        let iter = item.0.into_iter().enumerate().map(|(index, value)| {
             // Ensure all required regions exist.
-            if target.inner.len() <= index {
-                target.inner.push(R::default());
+            if self.inner.len() <= index {
+                self.inner.push(R::default());
             }
-            value.copy_onto(&mut target.inner[index])
+            self.inner[index].push(value)
         });
-        CopyIter(iter).copy_onto(&mut target.indices)
+        self.indices.push(CopyIter(iter))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::{CopyIter, CopyOnto, MirrorRegion, OwnedRegion, Region, StringRegion};
+    use crate::{CopyIter, MirrorRegion, OwnedRegion, Push, Region, StringRegion};
 
     use super::*;
 
@@ -387,7 +382,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = row.as_slice().copy_onto(&mut r);
+            let index = r.push(row.as_slice());
             indices.push(index);
         }
 
@@ -413,7 +408,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = (*row).copy_onto(&mut r);
+            let index = r.push(*row);
             indices.push(index);
         }
 
@@ -442,7 +437,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = row.copy_onto(&mut r);
+            let index = r.push(row);
             indices.push(index);
         }
 
@@ -470,7 +465,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = row.copy_onto(&mut r);
+            let index = r.push(row);
             indices.push(index);
         }
 
@@ -498,7 +493,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = CopyIter(row.iter()).copy_onto(&mut r);
+            let index = r.push(CopyIter(row.iter()));
             indices.push(index);
         }
 
@@ -515,15 +510,15 @@ mod tests {
     }
 
     #[test]
-    fn read_columns_copy_onto() {
+    fn read_columns_push() {
         let data = [[[1]; 4]; 4];
 
         let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
         let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
-            let idx = row.copy_onto(&mut r);
-            let idx2 = r.index(idx).copy_onto(&mut r2);
+            let idx = r.push(row);
+            let idx2 = r2.push(r.index(idx));
             assert!(r.index(idx).iter().eq(r2.index(idx2).iter()));
         }
     }
@@ -537,7 +532,7 @@ mod tests {
 
         let mut idx = None;
         for row in &data {
-            idx = Some(row.copy_onto(&mut r));
+            idx = Some(r.push(row));
         }
 
         r.clear();
@@ -551,10 +546,10 @@ mod tests {
         let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
-            row.copy_onto(&mut r);
+            r.push(row);
         }
         for row in data {
-            row.copy_onto(&mut r);
+            r.push(row);
         }
 
         let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
@@ -580,7 +575,7 @@ mod tests {
         let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
 
         for row in &data {
-            let _ = CopyIter(row.iter()).copy_onto(&mut r);
+            let _ = r.push(CopyIter(row.iter()));
         }
 
         let (mut siz1, mut cap1) = (0, 0);
@@ -591,7 +586,7 @@ mod tests {
 
         let mut r2 = ColumnsRegion::merge_regions(std::iter::once(&r));
         for row in &data {
-            let _ = CopyIter(row.iter()).copy_onto(&mut r2);
+            let _ = r2.push(CopyIter(row.iter()));
         }
 
         let (mut siz2, mut cap2) = (0, 0);

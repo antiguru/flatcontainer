@@ -38,7 +38,7 @@ impl<T: Copy> Index for T {}
 /// of this data at a later time. It is up to an implementation to select the appropriate
 /// presentation of the data, and what data it can absorb.
 ///
-/// Implement the [`CopyOnto`] trait for all types that can be copied into a region.
+/// Implement the [`Push`] trait for all types that can be copied into a region.
 pub trait Region: Default {
     /// The type of the data that one gets out of the container.
     type ReadItem<'a>
@@ -77,21 +77,21 @@ pub trait Containerized {
     type Region: Region;
 }
 
-/// A type that can write its contents into a region.
-pub trait CopyOnto<C: Region> {
-    /// Copy self into the target container, returning an index that allows to
-    /// look up the corresponding read item.
-    fn copy_onto(self, target: &mut C) -> C::Index;
+/// Push an item `T` into a region.
+pub trait Push<T>: Region {
+    /// Push `item` into self, returning an index that allows to look up the
+    /// corresponding read item.
+    fn push(&mut self, item: T) -> Self::Index;
 }
 
 /// Reserve space in the receiving region.
 ///
-/// Closely related to [`CopyOnto`], but separate because target type is likely different.
-pub trait ReserveItems<R: Region> {
+/// Closely related to [`Push`], but separate because target type is likely different.
+pub trait ReserveItems<T>: Region {
     /// Ensure that the region can absorb `items` without reallocation.
-    fn reserve_items<I>(target: &mut R, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone;
+        I: Iterator<Item = T> + Clone;
 }
 
 /// A container for indices into a region.
@@ -161,8 +161,11 @@ impl<R: Region> FlatStack<R> {
 
     /// Appends the element to the back of the stack.
     #[inline]
-    pub fn copy(&mut self, item: impl CopyOnto<R>) {
-        let index = item.copy_onto(&mut self.region);
+    pub fn copy<T>(&mut self, item: T)
+    where
+        R: Push<T>,
+    {
+        let index = self.region.push(item);
         self.indices.push(index);
     }
 
@@ -207,7 +210,7 @@ impl<R: Region> FlatStack<R> {
     /// Reserve space for the items returned by the iterator.
     pub fn reserve_items<T>(&mut self, items: impl Iterator<Item = T> + Clone)
     where
-        T: ReserveItems<R>,
+        R: ReserveItems<T>,
     {
         ReserveItems::reserve_items(&mut self.region, items);
     }
@@ -233,12 +236,12 @@ impl<R: Region> FlatStack<R> {
     }
 }
 
-impl<T: CopyOnto<R>, R: Region> Extend<T> for FlatStack<R> {
+impl<T, R: Region + Push<T>> Extend<T> for FlatStack<R> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         self.reserve(iter.size_hint().0);
         for item in iter {
-            self.indices.push(item.copy_onto(&mut self.region));
+            self.indices.push(self.region.push(item));
         }
     }
 }
@@ -287,7 +290,7 @@ impl<R: Region> Clone for Iter<'_, R> {
     }
 }
 
-impl<R: Region, T: CopyOnto<R>> FromIterator<T> for FlatStack<R> {
+impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
         let mut c = Self::with_capacity(iter.size_hint().0);
@@ -320,8 +323,8 @@ mod tests {
 
     use super::*;
 
-    fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
-        item.copy_onto(r)
+    fn copy<R: Region + Push<T>, T>(r: &mut R, item: T) -> R::Index {
+        r.push(item)
     }
 
     #[test]
@@ -335,9 +338,9 @@ mod tests {
     #[test]
     fn test_slice_string_onto() {
         let mut c = <StringRegion>::default();
-        let index = "abc".to_string().copy_onto(&mut c);
+        let index = c.push("abc".to_string());
         assert_eq!("abc", c.index(index));
-        let index = "def".copy_onto(&mut c);
+        let index = c.push("def");
         assert_eq!("def", c.index(index));
     }
 
@@ -354,7 +357,7 @@ mod tests {
     fn test_vec() {
         let mut c = <SliceRegion<MirrorRegion<_>>>::default();
         let slice = &[1u8, 2, 3];
-        let idx = slice.copy_onto(&mut c);
+        let idx = c.push(slice);
         assert!(slice.iter().copied().eq(c.index(idx)));
     }
 
@@ -362,7 +365,7 @@ mod tests {
     fn test_vec_onto() {
         let mut c = <SliceRegion<MirrorRegion<u8>>>::default();
         let slice = &[1u8, 2, 3][..];
-        let idx = slice.copy_onto(&mut c);
+        let idx = c.push(slice);
         assert!(slice.iter().copied().eq(c.index(idx)));
     }
 
@@ -449,31 +452,33 @@ mod tests {
         }
     }
 
-    impl CopyOnto<PersonRegion> for &Person {
-        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
-            let name = (&self.name).copy_onto(&mut target.name_container);
-            let age = self.age.copy_onto(&mut target.age_container);
-            let hobbies = (&self.hobbies).copy_onto(&mut target.hobbies);
+    impl Push<&Person> for PersonRegion {
+        fn push(&mut self, item: &Person) -> <PersonRegion as Region>::Index {
+            let name = self.name_container.push(&item.name);
+            let age = self.age_container.push(item.age);
+            let hobbies = self.hobbies.push(&item.hobbies);
             (name, age, hobbies)
         }
     }
 
-    impl ReserveItems<PersonRegion> for &Person {
-        fn reserve_items<I>(target: &mut PersonRegion, items: I)
+    impl<'a> ReserveItems<&'a Person> for PersonRegion {
+        fn reserve_items<I>(&mut self, items: I)
         where
-            I: Iterator<Item = Self> + Clone,
+            I: Iterator<Item = &'a Person> + Clone,
         {
-            ReserveItems::reserve_items(&mut target.name_container, items.clone().map(|i| &i.name));
-            ReserveItems::reserve_items(&mut target.age_container, items.clone().map(|i| &i.age));
-            ReserveItems::reserve_items(&mut target.hobbies, items.map(|i| &i.hobbies));
+            self.name_container
+                .reserve_items(items.clone().map(|i| &i.name));
+            self.age_container
+                .reserve_items(items.clone().map(|i| &i.age));
+            self.hobbies.reserve_items(items.map(|i| &i.hobbies));
         }
     }
 
-    impl CopyOnto<PersonRegion> for PersonRef<'_> {
-        fn copy_onto(self, target: &mut PersonRegion) -> <PersonRegion as Region>::Index {
-            let name = self.name.copy_onto(&mut target.name_container);
-            let age = self.age.copy_onto(&mut target.age_container);
-            let hobbies = self.hobbies.copy_onto(&mut target.hobbies);
+    impl Push<PersonRef<'_>> for PersonRegion {
+        fn push(&mut self, item: PersonRef<'_>) -> <PersonRegion as Region>::Index {
+            let name = self.name_container.push(item.name);
+            let age = self.age_container.push(item.age);
+            let hobbies = self.hobbies.push(item.hobbies);
             (name, age, hobbies)
         }
     }
@@ -522,9 +527,9 @@ mod tests {
     fn all_types() {
         fn test_copy<T, R: Region + Clone>(t: T)
         where
-            T: CopyOnto<R>,
+            for<'a> R: Push<T> + Push<<R as Region>::ReadItem<'a>>,
             // Make sure that types are debug, even if we don't use this in the test.
-            for<'a> R::ReadItem<'a>: Debug + CopyOnto<R>,
+            for<'a> R::ReadItem<'a>: Debug,
         {
             let mut c = FlatStack::default();
             c.copy(t);
@@ -535,7 +540,7 @@ mod tests {
             c.clear();
 
             let mut r = R::default();
-            cc.get(0).copy_onto(&mut r);
+            r.push(cc.get(0));
 
             c.reserve_regions(std::iter::once(&r));
 
@@ -649,7 +654,7 @@ mod tests {
         c.copy(vec![1, 2, 3]);
 
         let mut r = SliceRegion::<MirrorRegion<u8>>::default();
-        let idx = [1, 2, 3].copy_onto(&mut r);
+        let idx = r.push([1, 2, 3]);
         let read_item = r.index(idx);
         is_clone(&read_item);
         let _read_item3 = read_item;

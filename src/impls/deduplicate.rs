@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{CopyOnto, Region};
+use crate::{Push, Region};
 
 /// A region to deduplicate consecutive equal items.
 ///
@@ -13,10 +13,10 @@ use crate::{CopyOnto, Region};
 /// The following example shows that two inserts can result in the same index.
 /// ```
 /// use flatcontainer::impls::deduplicate::CollapseSequence;
-/// use flatcontainer::{CopyOnto, StringRegion};
+/// use flatcontainer::{Push, StringRegion};
 /// let mut r = <CollapseSequence<StringRegion>>::default();
 ///
-/// assert_eq!("abc".copy_onto(&mut r), "abc".copy_onto(&mut r));
+/// assert_eq!(r.push("abc"), r.push("abc"));
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -72,18 +72,18 @@ impl<R: Region> Region for CollapseSequence<R> {
     }
 }
 
-impl<R: Region, T: CopyOnto<R>> CopyOnto<CollapseSequence<R>> for T
+impl<T, R: Region + Push<T>> Push<T> for CollapseSequence<R>
 where
     for<'a> T: PartialEq<R::ReadItem<'a>>,
 {
-    fn copy_onto(self, target: &mut CollapseSequence<R>) -> <CollapseSequence<R> as Region>::Index {
-        if let Some(last_index) = target.last_index {
-            if self == target.inner.index(last_index) {
+    fn push(&mut self, item: T) -> <CollapseSequence<R> as Region>::Index {
+        if let Some(last_index) = self.last_index {
+            if item == self.inner.index(last_index) {
                 return last_index;
             }
         }
-        let index = self.copy_onto(&mut target.inner);
-        target.last_index = Some(index);
+        let index = self.inner.push(item);
+        self.last_index = Some(index);
         index
     }
 }
@@ -99,10 +99,10 @@ where
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
 /// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-/// use flatcontainer::{CopyOnto, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
-/// let index: usize = b"abc"[..].copy_onto(&mut r);
+/// let index: usize = r.push(&b"abc");
 /// assert_eq!(b"abc", r.index(index));
 /// ```
 #[derive(Debug, Clone)]
@@ -182,19 +182,16 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
     }
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R>>
-    CopyOnto<ConsecutiveOffsetPairs<R, O>> for T
+impl<R: Region<Index = (usize, usize)> + Push<T>, O: OffsetContainer<usize>, T> Push<T>
+    for ConsecutiveOffsetPairs<R, O>
 {
     #[inline]
-    fn copy_onto(
-        self,
-        target: &mut ConsecutiveOffsetPairs<R, O>,
-    ) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {
-        let index = self.copy_onto(&mut target.inner);
-        debug_assert_eq!(index.0, target.last_index);
-        target.last_index = index.1;
-        target.offsets.push(index.1);
-        target.offsets.len() - 2
+    fn push(&mut self, item: T) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {
+        let index = self.inner.push(item);
+        debug_assert_eq!(index.0, self.last_index);
+        self.last_index = index.1;
+        self.offsets.push(index.1);
+        self.offsets.len() - 2
     }
 }
 
@@ -202,7 +199,7 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>, T: CopyOnto<R
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
     use crate::impls::offsets::OffsetOptimized;
-    use crate::{CopyOnto, FlatStack, StringRegion};
+    use crate::{FlatStack, Push, StringRegion};
 
     #[test]
     fn test_dedup_flatstack() {
@@ -220,7 +217,7 @@ mod tests {
     fn test_dedup_region() {
         let mut r = CollapseSequence::<StringRegion>::default();
 
-        assert_eq!("abc".copy_onto(&mut r), "abc".copy_onto(&mut r));
+        assert_eq!(r.push("abc"), r.push("abc"));
 
         println!("{r:?}");
     }
@@ -231,7 +228,7 @@ mod tests {
             CollapseSequence::<ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>>::default();
 
         for _ in 0..1000 {
-            "abc".copy_onto(&mut r);
+            r.push("abc");
         }
 
         println!("{r:?}");
