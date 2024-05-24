@@ -7,7 +7,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Vec<T> {
     type Region = SliceRegion<T::Region>;
@@ -32,7 +32,7 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 ///
 /// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
 /// ```
-/// use flatcontainer::{Containerized, CopyOnto, Region, SliceRegion};
+/// use flatcontainer::{Containerized, Push, Region, SliceRegion};
 /// let mut r = <SliceRegion<<String as Containerized>::Region>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog"
@@ -42,8 +42,8 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 ///     .split(" ")
 ///     .collect::<Vec<_>>();
 ///
-/// let en_index = (&panagram_en).copy_onto(&mut r);
-/// let de_index = (&panagram_de).copy_onto(&mut r);
+/// let en_index = r.push(&panagram_en);
+/// let de_index = r.push(&panagram_de);
 ///
 /// assert!(panagram_de.into_iter().eq(r.index(de_index)));
 /// assert!(panagram_en.into_iter().eq(r.index(en_index)));
@@ -190,11 +190,17 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a,
 }
 
 /// An iterator over the items read from a slice region.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct ReadSliceIter<'a, C: Region, O: OffsetContainer<C::Index>>(
     &'a SliceRegion<C, O>,
     Range<usize>,
 );
+
+impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceIter<'a, C, O> {
+    fn clone(&self) -> Self {
+        Self(self.0, self.1.clone())
+    }
+}
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a, C, O> {
     type Item = C::ReadItem<'a>;
@@ -207,175 +213,176 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a,
     }
 }
 
-impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &[T]
+impl<'a, C, T, O> Push<&'a [T]> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> &'a T: CopyOnto<C>,
+    C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        let start = target.slices.len();
-        target
-            .slices
-            .extend(self.iter().map(|t| t.copy_onto(&mut target.inner)));
-        (start, target.slices.len())
+    fn push(&mut self, item: &'a [T]) -> <SliceRegion<C, O> as Region>::Index {
+        let start = self.slices.len();
+        self.slices.extend(item.iter().map(|t| self.inner.push(t)));
+        (start, self.slices.len())
     }
 }
 
-impl<T, R, O> ReserveItems<SliceRegion<R, O>> for &[T]
+impl<'a, T, R, O> ReserveItems<&'a [T]> for SliceRegion<R, O>
 where
-    for<'a> &'a T: ReserveItems<R>,
-    R: Region,
+    R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
-    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a [T]> + Clone,
     {
-        target.slices.reserve(items.clone().map(<[T]>::len).sum());
-        ReserveItems::reserve_items(&mut target.inner, items.flatten());
+        self.slices.reserve(items.clone().map(<[T]>::len).sum());
+        self.inner.reserve_items(items.flatten());
     }
 }
 
-impl<C, T, O> CopyOnto<SliceRegion<C, O>> for Vec<T>
+impl<C, T, O> Push<Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    T: CopyOnto<C>,
+    C: Region + Push<T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        let start = target.slices.len();
-        target
-            .slices
-            .extend(self.into_iter().map(|t| t.copy_onto(&mut target.inner)));
-        (start, target.slices.len())
+    fn push(&mut self, item: Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
+        let start = self.slices.len();
+        self.slices
+            .extend(item.into_iter().map(|t| self.inner.push(t)));
+        (start, self.slices.len())
     }
 }
 
-impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &Vec<T>
+impl<C, T, O> Push<&Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> &'a [T]: CopyOnto<SliceRegion<C, O>>,
+    for<'a> C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
+    fn push(&mut self, item: &Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
-impl<C, T, O> CopyOnto<SliceRegion<C, O>> for &&Vec<T>
+impl<'a, C, T, O> Push<&&'a Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> &'a [T]: CopyOnto<SliceRegion<C, O>>,
+    C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
+    fn push(&mut self, item: &&'a Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
-impl<T, R, O> ReserveItems<SliceRegion<R, O>> for &Vec<T>
+impl<'a, T, R, O> ReserveItems<&'a Vec<T>> for SliceRegion<R, O>
 where
-    for<'a> &'a T: ReserveItems<R>,
-    R: Region,
+    for<'b> R: Region + ReserveItems<&'b T>,
     O: OffsetContainer<R::Index>,
 {
-    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a Vec<T>> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(Deref::deref));
+        self.reserve_items(items.map(Deref::deref));
     }
 }
 
-impl<C, O> CopyOnto<SliceRegion<C, O>> for ReadSlice<'_, C, O>
+impl<'a, C, O> Push<ReadSlice<'a, C, O>> for SliceRegion<C, O>
 where
-    for<'a> C::ReadItem<'a>: CopyOnto<C>,
-    C: Region,
+    C: Region + Push<<C as Region>::ReadItem<'a>>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        let ReadSlice { region, start, end } = self;
-        let start_len = target.slices.len();
+    fn push(&mut self, item: ReadSlice<'a, C, O>) -> <SliceRegion<C, O> as Region>::Index {
+        let ReadSlice { region, start, end } = item;
+        let start_len = self.slices.len();
         for index in start..end {
             let index = region.slices.index(index);
-            let index = region.inner.index(index).copy_onto(&mut target.inner);
-            target.slices.push(index);
+            let index = self.inner.push(region.inner.index(index));
+            self.slices.push(index);
         }
-        (start_len, target.slices.len())
+        (start_len, self.slices.len())
     }
 }
 
-impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for [T; N]
+impl<T, R, O, const N: usize> Push<[T; N]> for SliceRegion<R, O>
 where
-    for<'a> &'a [T]: CopyOnto<SliceRegion<R, O>>,
-    R: Region,
+    for<'a> R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
+    fn push(&mut self, item: [T; N]) -> <SliceRegion<R, O> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
-impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for &[T; N]
+impl<'a, T, R, O, const N: usize> Push<&'a [T; N]> for SliceRegion<R, O>
 where
-    for<'a> &'a [T]: CopyOnto<SliceRegion<R, O>>,
-    R: Region,
+    R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
+    fn push(&mut self, item: &'a [T; N]) -> <SliceRegion<R, O> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
-impl<T, R, O, const N: usize> CopyOnto<SliceRegion<R, O>> for &&[T; N]
+impl<'a, T, R, O, const N: usize> Push<&&'a [T; N]> for SliceRegion<R, O>
 where
-    for<'b> &'b [T]: CopyOnto<SliceRegion<R, O>>,
-    R: Region,
+    R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut SliceRegion<R, O>) -> <SliceRegion<R, O> as Region>::Index {
-        self.as_slice().copy_onto(target)
+    fn push(&mut self, item: &&'a [T; N]) -> <SliceRegion<R, O> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
-impl<T, R, O, const N: usize> ReserveItems<SliceRegion<R, O>> for &[T; N]
+impl<'a, T, R, O, const N: usize> ReserveItems<&'a [T; N]> for SliceRegion<R, O>
 where
-    for<'a> &'a T: ReserveItems<R>,
-    R: Region,
+    R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
-    fn reserve_items<I>(target: &mut SliceRegion<R, O>, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a [T; N]> + Clone,
     {
-        ReserveItems::reserve_items(target, items.map(<[T; N]>::as_slice));
+        self.reserve_items(items.map(<[T; N]>::as_slice));
+    }
+}
+
+impl<'a, R, O> ReserveItems<ReadSlice<'a, R, O>> for SliceRegion<R, O>
+where
+    R: Region + ReserveItems<<R as Region>::ReadItem<'a>> + 'a,
+    O: OffsetContainer<R::Index>,
+{
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = ReadSlice<'a, R, O>> + Clone,
+    {
+        self.slices
+            .reserve(items.clone().map(|read_slice| read_slice.len()).sum());
+        self.inner.reserve_items(items.flatten());
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CopyOnto, MirrorRegion, Region};
+    use crate::{MirrorRegion, Push, Region};
 
     #[test]
     fn read_slice() {
         let s = [1, 2, 3, 4];
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
 
-        let index = s.copy_onto(&mut r);
+        let index = r.push(s);
 
         assert!(s.iter().copied().eq(r.index(index).iter()));
 
-        let index = s.copy_onto(&mut r);
+        let index = r.push(s);
         let slice = r.index(index);
         assert_eq!(s.len(), slice.len());
         assert!(!slice.is_empty());
@@ -384,7 +391,7 @@ mod tests {
         assert_eq!(s.get(2), Some(&3));
         assert_eq!(s.get(3), Some(&4));
 
-        let index = <[u8; 0] as CopyOnto<_>>::copy_onto([], &mut r);
+        let index = <_ as Push<[u8; 0]>>::push(&mut r, []);
         let slice = r.index(index);
         assert_eq!(0, slice.len());
         assert!(slice.is_empty());
@@ -394,7 +401,7 @@ mod tests {
     #[should_panic]
     fn test_get_out_of_bounds() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        let index = [1; 4].copy_onto(&mut r);
+        let index = r.push([1; 4]);
 
         // Offset 4 is out of bounds and expected to panic.
         let _ = r.index(index).get(4);
@@ -403,7 +410,7 @@ mod tests {
     #[test]
     fn test_read_slice_debug() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        let index = [1; 4].copy_onto(&mut r);
+        let index = r.push([1; 4]);
 
         assert_eq!("[1, 1, 1, 1]", format!("{:?}", r.index(index)));
     }
@@ -411,7 +418,7 @@ mod tests {
     #[test]
     fn test_read_slice_clone() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        let index = [1; 4].copy_onto(&mut r);
+        let index = r.push([1; 4]);
 
         assert_eq!("[1, 1, 1, 1]", format!("{:?}", r.index(index).clone()));
     }
@@ -419,7 +426,7 @@ mod tests {
     #[test]
     fn test_reserve_ref_slice() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        ReserveItems::reserve_items(&mut r, std::iter::once([1; 4].as_slice()));
+        r.reserve_items(std::iter::once([1; 4].as_slice()));
         let mut cap = 0;
         r.heap_size(|_, ca| {
             cap += ca;
@@ -430,7 +437,7 @@ mod tests {
     #[test]
     fn test_reserve_ref_vec() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        ReserveItems::reserve_items(&mut r, std::iter::once(&vec![1; 4]));
+        r.reserve_items(std::iter::once(&vec![1; 4]));
         let mut cap = 0;
         r.heap_size(|_, ca| {
             cap += ca;
@@ -441,7 +448,7 @@ mod tests {
     #[test]
     fn test_reserve_ref_array() {
         let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
-        ReserveItems::reserve_items(&mut r, std::iter::once(&[1; 4]));
+        r.reserve_items(std::iter::once(&[1; 4]));
         let mut cap = 0;
         r.heap_size(|_, ca| {
             cap += ca;

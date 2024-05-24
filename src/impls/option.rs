@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -15,12 +15,12 @@ impl<T: Containerized> Containerized for Option<T> {
 ///
 /// The region can hold options:
 /// ```
-/// # use flatcontainer::{Containerized, CopyOnto, OptionRegion, Region};
+/// # use flatcontainer::{Containerized, Push, OptionRegion, Region};
 /// let mut r = <OptionRegion<<u8 as Containerized>::Region>>::default();
 ///
-/// let some_index = Some(123).copy_onto(&mut r);
+/// let some_index = r.push(Some(123));
 /// // Type annotations required for `None`:
-/// let none_index = Option::<u8>::None.copy_onto(&mut r);
+/// let none_index = r.push(Option::<u8>::None);
 ///
 /// assert_eq!(Some(123), r.index(some_index));
 /// assert_eq!(None, r.index(none_index));
@@ -68,38 +68,35 @@ impl<R: Region> Region for OptionRegion<R> {
     }
 }
 
-impl<T, TR> CopyOnto<OptionRegion<TR>> for Option<T>
+impl<T, TR> Push<Option<T>> for OptionRegion<TR>
 where
-    TR: Region,
-    T: CopyOnto<TR>,
+    TR: Region + Push<T>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
-        self.map(|t| t.copy_onto(&mut target.inner))
+    fn push(&mut self, item: Option<T>) -> <OptionRegion<TR> as Region>::Index {
+        item.map(|t| self.inner.push(t))
     }
 }
 
-impl<'a, T: 'a, TR> CopyOnto<OptionRegion<TR>> for &'a Option<T>
+impl<'a, T: 'a, TR> Push<&'a Option<T>> for OptionRegion<TR>
 where
-    TR: Region,
-    &'a T: CopyOnto<TR>,
+    TR: Region + Push<&'a T>,
 {
     #[inline]
-    fn copy_onto(self, target: &mut OptionRegion<TR>) -> <OptionRegion<TR> as Region>::Index {
-        self.as_ref().map(|t| t.copy_onto(&mut target.inner))
+    fn push(&mut self, item: &'a Option<T>) -> <OptionRegion<TR> as Region>::Index {
+        item.as_ref().map(|t| self.inner.push(t))
     }
 }
 
-impl<'a, T: 'a, TR> ReserveItems<OptionRegion<TR>> for &'a Option<T>
+impl<'a, T: 'a, TR> ReserveItems<&'a Option<T>> for OptionRegion<TR>
 where
-    TR: Region,
-    &'a T: ReserveItems<TR>,
+    TR: Region + ReserveItems<&'a T>,
 {
-    fn reserve_items<I>(target: &mut OptionRegion<TR>, items: I)
+    fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = Self> + Clone,
+        I: Iterator<Item = &'a Option<T>> + Clone,
     {
-        ReserveItems::reserve_items(&mut target.inner, items.filter_map(|r| r.as_ref()));
+        self.inner.reserve_items(items.filter_map(|r| r.as_ref()));
     }
 }
 

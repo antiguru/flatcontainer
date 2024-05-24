@@ -11,7 +11,7 @@ flatcontainer = "0.1"
 ## Example
 
 ```rust
-use flatcontainer::{FlatStack, CopyOnto};
+use flatcontainer::FlatStack;
 fn main() {
   let r: Result<_, u16> = Ok("abc");
   let mut c = FlatStack::default_impl::<Result<&str, u16>>();
@@ -33,7 +33,7 @@ interface to permit a multitude of types to be presented to the same region. For
 example, a region containing string-like objects and only promising access to
 `&str` can accept anything that looks like a string, i.e., `String`, `&str` and
 references to said types. A region's write-half should be implemented using the
-[`CopyOnto`] trait.
+[`Push`] trait.
 
 Regions permit data access through opaque indexes, which the caller is responsible
 for memorizing. An index grants access to the region-specific data representation,

@@ -1,6 +1,6 @@
 //! A region that encodes its contents.
 
-use crate::{CopyOnto, OwnedRegion, Region};
+use crate::{OwnedRegion, Push, Region};
 
 pub use self::misra_gries::MisraGries;
 pub use dictionary::DictionaryCodec;
@@ -28,50 +28,41 @@ fn consolidate_from<T: Ord>(vec: &mut Vec<(T, usize)>, offset: usize) {
 
 /// Sorts and consolidates a slice, returning the valid prefix length.
 fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
-    // We could do an insertion-sort like initial scan which builds up sorted, consolidated runs.
-    // In a world where there are not many results, we may never even need to call in to merge sort.
-    slice.sort_by(|x, y| x.0.cmp(&y.0));
+    if slice.len() > 1 {
+        // We could do an insertion-sort like initial scan which builds up sorted, consolidated runs.
+        // In a world where there are not many results, we may never even need to call in to merge sort.
+        slice.sort_by(|x, y| x.0.cmp(&y.0));
 
-    let slice_ptr = slice.as_mut_ptr();
+        // Counts the number of distinct known-non-zero accumulations. Indexes the write location.
+        let mut offset = 0;
+        let mut accum = slice[offset].1;
 
-    // Counts the number of distinct known-non-zero accumulations. Indexes the write location.
-    let mut offset = 0;
-    for index in 1..slice.len() {
-        // The following unsafe block elides various bounds checks, using the reasoning that `offset`
-        // is always strictly less than `index` at the beginning of each iteration. This is initially
-        // true, and in each iteration `offset` can increase by at most one (whereas `index` always
-        // increases by one). As `index` is always in bounds, and `offset` starts at zero, it too is
-        // always in bounds.
-        //
-        // LLVM appears to struggle to optimize out Rust's split_at_mut, which would prove disjointness
-        // using run-time tests.
-        unsafe {
-            assert!(offset < index);
-
-            // LOOP INVARIANT: offset < index
-            let ptr1 = slice_ptr.add(offset);
-            let ptr2 = slice_ptr.add(index);
-
-            if (*ptr1).0 == (*ptr2).0 {
-                (*ptr1).1 += (*ptr2).1;
+        for index in 1..slice.len() {
+            if slice[index].0 == slice[index - 1].0 {
+                accum += slice[index].1;
             } else {
-                if (*ptr1).1 != 0 {
+                if accum != 0 {
+                    slice.swap(offset, index - 1);
+                    slice[offset].1.clone_from(&accum);
                     offset += 1;
                 }
-                let ptr1 = slice_ptr.add(offset);
-                std::ptr::swap(ptr1, ptr2);
+                accum.clone_from(&slice[index].1);
             }
         }
-    }
-    if offset < slice.len() && slice[offset].1 != 0 {
-        offset += 1;
-    }
+        if accum != 0 {
+            slice.swap(offset, slice.len() - 1);
+            slice[offset].1 = accum;
+            offset += 1;
+        }
 
-    offset
+        offset
+    } else {
+        slice.iter().filter(|x| x.1 != 0).count()
+    }
 }
 
 /// A region that encodes its data in a codec `C`.
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct CodecRegion<C: Codec, R = OwnedRegion<u8>> {
     inner: R,
     codec: C,
@@ -121,27 +112,28 @@ where
     }
 }
 
-impl<C: Codec, R> CopyOnto<CodecRegion<C, R>> for &[u8]
+impl<C: Codec, R> Push<&[u8]> for CodecRegion<C, R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> &'a [u8]: CopyOnto<R>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
-    fn copy_onto(self, target: &mut CodecRegion<C, R>) -> <CodecRegion<C, R> as Region>::Index {
-        target.codec.encode(self, &mut target.inner)
+    fn push(&mut self, item: &[u8]) -> <CodecRegion<C, R> as Region>::Index {
+        self.codec.encode(item, &mut self.inner)
     }
 }
 
 /// Encode and decode byte strings.
-pub trait Codec: Default + 'static {
+pub trait Codec: Default {
     /// Decodes an input byte slice into a sequence of byte slices.
     fn decode<'a>(&'a self, bytes: &'a [u8]) -> &'a [u8];
     /// Encodes a sequence of byte slices into an output byte slice.
-    fn encode<R: Region>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+    fn encode<R>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
     where
-        for<'a> &'a [u8]: CopyOnto<R>;
+        for<'a> R: Region + Push<&'a [u8]>;
     /// Constructs a new instance of `Self` from accumulated statistics.
     /// These statistics should cover the data the output expects to see.
-    fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self;
+    fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self
+    where
+        Self: 'a;
     /// Diagnostic information about the state of the codec.
     fn report(&self) {}
 
@@ -151,7 +143,7 @@ pub trait Codec: Default + 'static {
 
 mod dictionary {
 
-    use crate::{CopyOnto, Region};
+    use crate::{Push, Region};
     use std::collections::BTreeMap;
 
     pub use super::{BytesMap, Codec, MisraGries};
@@ -179,18 +171,18 @@ mod dictionary {
         /// Encode a sequence of byte slices.
         ///
         /// Encoding also records statistics about the structure of the input.
-        fn encode<R: Region>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+        fn encode<R>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
         where
-            for<'a> &'a [u8]: CopyOnto<R>,
+            for<'a> R: Region + Push<&'a [u8]>,
         {
             self.total += bytes.len();
             // If we have an index referencing `bytes`, use the index key.
             let index = if let Some(b) = self.encode.get(bytes) {
                 self.bytes += 1;
-                [*b].as_slice().copy_onto(output)
+                output.push([*b].as_slice())
             } else {
                 self.bytes += bytes.len();
-                bytes.copy_onto(output)
+                output.push(bytes)
             };
             // Stats stuff.
             self.stats.0.insert(bytes.to_owned());
@@ -388,21 +380,21 @@ mod tests {
         let mut r = CodecRegion::<DictionaryCodec>::default();
 
         for _ in 0..1000 {
-            let index = "abc".as_bytes().copy_onto(&mut r);
+            let index = r.push("abc".as_bytes());
             assert_eq!("abc".as_bytes(), r.index(index));
         }
 
         let mut r2 = CodecRegion::default();
 
         for _ in 0..1000 {
-            let index = "abc".as_bytes().copy_onto(&mut r2);
+            let index = r2.push("abc".as_bytes());
             assert_eq!("abc".as_bytes(), r2.index(index));
         }
 
         let mut r3 = CodecRegion::merge_regions([&r, &r2].into_iter());
 
         for _ in 0..2000 {
-            let index = "abc".as_bytes().copy_onto(&mut r3);
+            let index = r3.push("abc".as_bytes());
             assert_eq!("abc".as_bytes(), r3.index(index));
         }
 
@@ -422,17 +414,17 @@ mod tests {
         }
         for _ in 0..1000 {
             for r in &mut regions {
-                "abcdef".as_bytes().copy_onto(r);
-                "defghi".as_bytes().copy_onto(r);
+                r.push("abcdef".as_bytes());
+                r.push("defghi".as_bytes());
             }
         }
 
         let mut merged = CodecRegion::merge_regions(regions.iter());
 
         for _ in 0..2000 {
-            let index = "abcdef".as_bytes().copy_onto(&mut merged);
+            let index = merged.push("abcdef".as_bytes());
             assert_eq!("abcdef".as_bytes(), merged.index(index));
-            let index = "defghi".as_bytes().copy_onto(&mut merged);
+            let index = merged.push("defghi".as_bytes());
             assert_eq!("defghi".as_bytes(), merged.index(index));
         }
 
@@ -448,17 +440,17 @@ mod tests {
         }
         for _ in 0..1000 {
             for r in &mut regions {
-                "abcdef".as_bytes().copy_onto(r);
-                "defghi".as_bytes().copy_onto(r);
+                r.push("abcdef".as_bytes());
+                r.push("defghi".as_bytes());
             }
         }
 
         let mut merged = CodecRegion::merge_regions(regions.iter());
 
         for _ in 0..2000 {
-            let index = "abcdef".as_bytes().copy_onto(&mut merged);
+            let index = merged.push("abcdef".as_bytes());
             assert_eq!("abcdef".as_bytes(), merged.index(index));
-            let index = "defghi".as_bytes().copy_onto(&mut merged);
+            let index = merged.push("defghi".as_bytes());
             assert_eq!("defghi".as_bytes(), merged.index(index));
         }
 
@@ -474,9 +466,9 @@ mod tests {
         let mut merged2 = CodecRegion::merge_regions(std::iter::once(&merged));
 
         for _ in 0..2000 {
-            let index = "abcdef".as_bytes().copy_onto(&mut merged2);
+            let index = merged2.push("abcdef".as_bytes());
             assert_eq!("abcdef".as_bytes(), merged2.index(index));
-            let index = "defghi".as_bytes().copy_onto(&mut merged2);
+            let index = merged2.push("defghi".as_bytes());
             assert_eq!("defghi".as_bytes(), merged2.index(index));
         }
 

@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, CopyOnto, Region, ReserveItems};
+use crate::{Containerized, Push, Region, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -33,7 +33,8 @@ macro_rules! tuple_flatcontainer {
 
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
-                    Self: 'a {
+                    Self: 'a,
+                {
                     Self {
                         $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
                     }
@@ -50,7 +51,8 @@ macro_rules! tuple_flatcontainer {
                 fn reserve_regions<'a, It>(&mut self, regions: It)
                 where
                     Self: 'a,
-                    It: Iterator<Item = &'a Self> + Clone {
+                    It: Iterator<Item = &'a Self> + Clone,
+                {
                     $(self.[<container $name>].reserve_regions(regions.clone().map(|r| &r.[<container $name>]));)*
                 }
 
@@ -66,60 +68,73 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name, [<$name _C>]: Region ),*>
-                CopyOnto<[<Tuple $($name)* Region>]<$([<$name _C>]),*>>
-                for ($($name,)*)
-                where
-                    $($name: CopyOnto<[<$name _C>]>),*
+            impl<$($name, [<$name _C>]: Region ),*> Push<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Push<$name>),*
             {
-                fn copy_onto(self, target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>)
+                fn push(&mut self, item: ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
-                    let ($($name,)*) = self;
-                    ($($name.copy_onto(&mut target.[<container $name>]),)*)
+                    let ($($name,)*) = item;
+                    ($(self.[<container $name>].push($name),)*)
                 }
             }
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<'a, $($name, [<$name _C>]: Region ),*>
-                CopyOnto<[<Tuple $($name)* Region>]<$([<$name _C>]),*>>
-                for &'a ($($name,)*)
-                where
-                    $(&'a $name: CopyOnto<[<$name _C>]>),*
+            impl<'a, $($name, [<$name _C>]),*> Push<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + Push<&'a $name>),*
             {
-                #[inline(always)]
-                fn copy_onto(self, target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>)
+                fn push(&mut self, item: &'a ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
-                    let ($($name,)*) = self;
-                    ($($name.copy_onto(&mut target.[<container $name>]),)*)
+                    let ($($name,)*) = item;
+                    ($(self.[<container $name>].push($name),)*)
                 }
             }
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<'a, $($name, [<$name _C>]: Region ),*>
-                ReserveItems<[<Tuple $($name)* Region>]<$([<$name _C>]),*>>
-                for &'a ($($name,)*)
-                where
-                    $(&'a $name: ReserveItems<[<$name _C>]>),*
+            impl<'a, $($name, [<$name _C>]),*> ReserveItems<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + ReserveItems<&'a $name>),*
             {
-                fn reserve_items<It>(target: &mut [<Tuple $($name)* Region>]<$([<$name _C>]),*>, items: It)
+                fn reserve_items<It>(&mut self, items: It)
                 where
-                    It: Iterator<Item = Self> + Clone {
-                        tuple_flatcontainer!(reserve_items target items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                    It: Iterator<Item = &'a ($($name,)*)> + Clone,
+                {
+                        tuple_flatcontainer!(reserve_items self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]),*> ReserveItems<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + ReserveItems<$name>),*
+            {
+                fn reserve_items<It>(&mut self, items: It)
+                where
+                    It: Iterator<Item = ($($name,)*)> + Clone,
+                {
+                        tuple_flatcontainer!(reserve_items_owned self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
                 }
             }
         }
     );
-    (reserve_items $target:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
+    (reserve_items $self:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
         paste! {
-            ReserveItems::reserve_items(&mut $target.[<container $name0>], $items.clone().map(|i| {
-                &i.$num0
-            }));
-            tuple_flatcontainer!(reserve_items $target $items $($name)* @ $($num)*);
+            $self.[<container $name0>].reserve_items($items.clone().map(|i| &i.$num0));
+            tuple_flatcontainer!(reserve_items $self $items $($name)* @ $($num)*);
         }
     };
-    (reserve_items $target:ident $items:ident @ $($num:tt)*) => {};
+    (reserve_items $self:ident $items:ident @ $($num:tt)*) => {};
+    (reserve_items_owned $self:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
+        paste! {
+            $self.[<container $name0>].reserve_items($items.clone().map(|i| i.$num0));
+            tuple_flatcontainer!(reserve_items_owned $self $items $($name)* @ $($num)*);
+        }
+    };
+    (reserve_items_owned $self:ident $items:ident @ $($num:tt)*) => {};
 }
 
 tuple_flatcontainer!(A);
@@ -162,25 +177,25 @@ cfg_if::cfg_if! {
 #[cfg(test)]
 mod tests {
     use crate::impls::tuple::TupleABCRegion;
-    use crate::{CopyOnto, MirrorRegion, Region, StringRegion};
+    use crate::{FlatStack, MirrorRegion, Push, Region, StringRegion};
 
     #[test]
     fn test_tuple() {
         let t = (1, 2, 3);
         let mut r = <TupleABCRegion<MirrorRegion<_>, MirrorRegion<_>, MirrorRegion<_>>>::default();
-        let index = t.copy_onto(&mut r);
+        let index = r.push(t);
         assert_eq!(t, r.index(index));
 
-        let index = (&1, &2, &3).copy_onto(&mut r);
+        let index = r.push((&1, &2, &3));
         assert_eq!(t, r.index(index));
 
-        let index = (&1, 2, 3).copy_onto(&mut r);
+        let index = r.push((&1, 2, 3));
         assert_eq!(t, r.index(index));
 
-        let index = (&(1, 2, 3)).copy_onto(&mut r);
+        let index = r.push(&(1, 2, 3));
         assert_eq!(t, r.index(index));
 
-        let index = (&(1, &2, 3)).copy_onto(&mut r);
+        let index = r.push(&(1, &2, 3));
         assert_eq!(t, r.index(index));
     }
 
@@ -188,16 +203,16 @@ mod tests {
     fn test_nested() {
         let t = ("abc", 2, 3);
         let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
-        let index = t.copy_onto(&mut r);
+        let index = r.push(t);
         assert_eq!(t, r.index(index));
 
-        let index = (&"abc", &2, &3).copy_onto(&mut r);
+        let index = r.push((&"abc", &2, &3));
         assert_eq!(t, r.index(index));
 
-        let index = (&"abc", 2, 3).copy_onto(&mut r);
+        let index = r.push((&"abc", 2, 3));
         assert_eq!(t, r.index(index));
 
-        let index = (&("abc", 2, 3)).copy_onto(&mut r);
+        let index = r.push(&("abc", 2, 3));
         assert_eq!(t, r.index(index));
     }
 
@@ -206,7 +221,7 @@ mod tests {
         let t = ("abc", 2, 3);
         let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
 
-        let _ = t.copy_onto(&mut r);
+        let _ = r.push(t);
 
         let (mut size, mut cap, mut cnt) = (0, 0, 0);
         r.heap_size(|siz, ca| {
@@ -220,5 +235,13 @@ mod tests {
         assert!(size > 0);
         assert!(cap > 0);
         assert!(cnt > 0);
+    }
+    #[test]
+    fn test_reserve_items() {
+        let mut c = FlatStack::default_impl::<(usize, String, Vec<String>)>();
+        c.copy((1, format!("Hello"), &["abc"]));
+
+        let mut c2 = FlatStack::default_impl::<(usize, String, Vec<String>)>();
+        c2.reserve_items(c.iter());
     }
 }

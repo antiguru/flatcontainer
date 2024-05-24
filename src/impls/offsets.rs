@@ -34,7 +34,7 @@ pub trait OffsetContainer<T>: Default + Extend<T> {
 /// A container for offsets that can represent strides of offsets.
 ///
 /// Does not implement `OffsetContainer` because it cannot accept arbitrary pushes.
-#[derive(Debug, Default)]
+#[derive(Eq, PartialEq, Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OffsetStride {
     /// No push has occurred.
@@ -136,7 +136,7 @@ impl OffsetStride {
 }
 
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
-#[derive(Eq, PartialEq, Ord, PartialOrd, Clone, Debug, Default)]
+#[derive(Eq, PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OffsetList {
     /// Offsets that fit within a `u32`.
@@ -216,7 +216,7 @@ impl OffsetList {
 
 /// An offset container implementation that first tries to recognize strides, and then spilles into
 /// a regular offset list.
-#[derive(Default, Debug)]
+#[derive(Eq, PartialEq, Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OffsetOptimized {
     strided: OffsetStride,
@@ -308,14 +308,14 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-    use crate::{CopyOnto, Region, SliceRegion, StringRegion};
+    use crate::{Push, Region, SliceRegion, StringRegion};
 
     use super::*;
 
     #[test]
     fn test_offset_optimized() {
-        fn copy<R: Region>(r: &mut R, item: impl CopyOnto<R>) -> R::Index {
-            item.copy_onto(r)
+        fn copy<R: Region + Push<T>, T>(r: &mut R, item: T) -> R::Index {
+            r.push(item)
         }
 
         let mut r = SliceRegion::<

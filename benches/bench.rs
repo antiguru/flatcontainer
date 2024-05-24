@@ -8,8 +8,8 @@ use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs
 use flatcontainer::impls::offsets::OffsetOptimized;
 use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
-    ColumnsRegion, Containerized, CopyOnto, FlatStack, MirrorRegion, OwnedRegion, Region,
-    ReserveItems, SliceRegion, StringRegion,
+    ColumnsRegion, Containerized, FlatStack, MirrorRegion, OwnedRegion, Push, Region, ReserveItems,
+    SliceRegion, StringRegion,
 };
 use test::Bencher;
 
@@ -265,7 +265,7 @@ fn vec_u_vn_s_prealloc(bencher: &mut Bencher) {
 
 fn _bench_copy<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
-    for<'a> &'a T: CopyOnto<<T as Containerized>::Region>,
+    for<'a> <T as Containerized>::Region: Push<&'a T>,
 {
     // prepare encoded data for bencher.bytes
     let mut arena = FlatStack::default_impl::<T>();
@@ -286,7 +286,7 @@ where
 
 fn _bench_copy_region<R: Region, T>(bencher: &mut Bencher, record: T)
 where
-    for<'a> &'a T: CopyOnto<R>,
+    for<'a> R: Push<&'a T>,
 {
     // prepare encoded data for bencher.bytes
     let mut arena = FlatStack::<R>::default();
@@ -319,7 +319,7 @@ fn _bench_clone<T: Containerized + Eq + Clone>(bencher: &mut Bencher, record: T)
 
 fn _bench_realloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
-    for<'a> &'a T: CopyOnto<<T as Containerized>::Region>,
+    for<'a> <T as Containerized>::Region: Push<&'a T>,
 {
     bencher.iter(|| {
         // prepare encoded data for bencher.bytes
@@ -332,8 +332,7 @@ where
 
 fn _bench_prealloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
-    for<'a> &'a T:
-        ReserveItems<<T as Containerized>::Region> + CopyOnto<<T as Containerized>::Region>,
+    for<'a> <T as Containerized>::Region: ReserveItems<&'a T> + Push<&'a T>,
 {
     bencher.iter(|| {
         // prepare encoded data for bencher.bytes
