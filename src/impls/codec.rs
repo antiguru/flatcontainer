@@ -132,7 +132,7 @@ where
 }
 
 /// Encode and decode byte strings.
-pub trait Codec: Default + 'static {
+pub trait Codec: Default {
     /// Decodes an input byte slice into a sequence of byte slices.
     fn decode<'a>(&'a self, bytes: &'a [u8]) -> &'a [u8];
     /// Encodes a sequence of byte slices into an output byte slice.
@@ -141,7 +141,9 @@ pub trait Codec: Default + 'static {
         for<'a> R: Region + Push<&'a [u8]>;
     /// Constructs a new instance of `Self` from accumulated statistics.
     /// These statistics should cover the data the output expects to see.
-    fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self;
+    fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self
+    where
+        Self: 'a;
     /// Diagnostic information about the state of the codec.
     fn report(&self) {}
 

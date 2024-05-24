@@ -158,7 +158,7 @@ where
     }
 }
 
-impl<'b, 'c, R> ReserveItems<&'b &'c str> for StringRegion<R>
+impl<'b, R> ReserveItems<&'b &'b str> for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
     for<'a> R: ReserveItems<&'a [u8]>,
@@ -166,7 +166,7 @@ where
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = &'b &'c str> + Clone,
+        I: Iterator<Item = &'b &'b str> + Clone,
     {
         self.reserve_items(items.copied());
     }

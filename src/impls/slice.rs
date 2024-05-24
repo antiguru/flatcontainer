@@ -366,7 +366,7 @@ where
 
 impl<'a, R, O> ReserveItems<ReadSlice<'a, R, O>> for SliceRegion<R, O>
 where
-    R: ReserveItems<<R as Region>::ReadItem<'a>>,
+    R: ReserveItems<<R as Region>::ReadItem<'a>> + 'a,
     R: Region,
     O: OffsetContainer<R::Index>,
 {
