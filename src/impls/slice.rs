@@ -278,7 +278,7 @@ where
 
 impl<'a, T, R, O> ReserveItems<&'a Vec<T>> for SliceRegion<R, O>
 where
-    R: Region + ReserveItems<&'a T>,
+    for<'b> R: Region + ReserveItems<&'b T>,
     O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(&mut self, items: I)
