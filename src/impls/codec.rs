@@ -28,46 +28,37 @@ fn consolidate_from<T: Ord>(vec: &mut Vec<(T, usize)>, offset: usize) {
 
 /// Sorts and consolidates a slice, returning the valid prefix length.
 fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
-    // We could do an insertion-sort like initial scan which builds up sorted, consolidated runs.
-    // In a world where there are not many results, we may never even need to call in to merge sort.
-    slice.sort_by(|x, y| x.0.cmp(&y.0));
+    if slice.len() > 1 {
+        // We could do an insertion-sort like initial scan which builds up sorted, consolidated runs.
+        // In a world where there are not many results, we may never even need to call in to merge sort.
+        slice.sort_by(|x, y| x.0.cmp(&y.0));
 
-    let slice_ptr = slice.as_mut_ptr();
+        // Counts the number of distinct known-non-zero accumulations. Indexes the write location.
+        let mut offset = 0;
+        let mut accum = slice[offset].1;
 
-    // Counts the number of distinct known-non-zero accumulations. Indexes the write location.
-    let mut offset = 0;
-    for index in 1..slice.len() {
-        // The following unsafe block elides various bounds checks, using the reasoning that `offset`
-        // is always strictly less than `index` at the beginning of each iteration. This is initially
-        // true, and in each iteration `offset` can increase by at most one (whereas `index` always
-        // increases by one). As `index` is always in bounds, and `offset` starts at zero, it too is
-        // always in bounds.
-        //
-        // LLVM appears to struggle to optimize out Rust's split_at_mut, which would prove disjointness
-        // using run-time tests.
-        unsafe {
-            assert!(offset < index);
-
-            // LOOP INVARIANT: offset < index
-            let ptr1 = slice_ptr.add(offset);
-            let ptr2 = slice_ptr.add(index);
-
-            if (*ptr1).0 == (*ptr2).0 {
-                (*ptr1).1 += (*ptr2).1;
+        for index in 1..slice.len() {
+            if slice[index].0 == slice[index - 1].0 {
+                accum += slice[index].1;
             } else {
-                if (*ptr1).1 != 0 {
+                if accum != 0 {
+                    slice.swap(offset, index - 1);
+                    slice[offset].1.clone_from(&accum);
                     offset += 1;
                 }
-                let ptr1 = slice_ptr.add(offset);
-                std::ptr::swap(ptr1, ptr2);
+                accum.clone_from(&slice[index].1);
             }
         }
-    }
-    if offset < slice.len() && slice[offset].1 != 0 {
-        offset += 1;
-    }
+        if accum != 0 {
+            slice.swap(offset, slice.len() - 1);
+            slice[offset].1 = accum;
+            offset += 1;
+        }
 
-    offset
+        offset
+    } else {
+        slice.iter().filter(|x| x.1 != 0).count()
+    }
 }
 
 /// A region that encodes its data in a codec `C`.
@@ -123,8 +114,7 @@ where
 
 impl<C: Codec, R> Push<&[u8]> for CodecRegion<C, R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: Push<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     fn push(&mut self, item: &[u8]) -> <CodecRegion<C, R> as Region>::Index {
         self.codec.encode(item, &mut self.inner)

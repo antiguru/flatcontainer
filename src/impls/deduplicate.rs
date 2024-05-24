@@ -72,8 +72,9 @@ impl<R: Region> Region for CollapseSequence<R> {
     }
 }
 
-impl<T, R: Region + Push<T>> Push<T> for CollapseSequence<R>
+impl<R, T> Push<T> for CollapseSequence<R>
 where
+    R: Region + Push<T>,
     for<'a> T: PartialEq<R::ReadItem<'a>>,
 {
     fn push(&mut self, item: T) -> <CollapseSequence<R> as Region>::Index {
@@ -182,8 +183,10 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
     }
 }
 
-impl<R: Region<Index = (usize, usize)> + Push<T>, O: OffsetContainer<usize>, T> Push<T>
-    for ConsecutiveOffsetPairs<R, O>
+impl<R, O, T> Push<T> for ConsecutiveOffsetPairs<R, O>
+where
+    R: Region<Index = (usize, usize)> + Push<T>,
+    O: OffsetContainer<usize>,
 {
     #[inline]
     fn push(&mut self, item: T) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {

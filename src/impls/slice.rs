@@ -213,14 +213,13 @@ impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a,
     }
 }
 
-impl<C, T, O> Push<&[T]> for SliceRegion<C, O>
+impl<'a, C, T, O> Push<&'a [T]> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> C: Push<&'a T>,
+    C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn push(&mut self, item: &[T]) -> <SliceRegion<C, O> as Region>::Index {
+    fn push(&mut self, item: &'a [T]) -> <SliceRegion<C, O> as Region>::Index {
         let start = self.slices.len();
         self.slices.extend(item.iter().map(|t| self.inner.push(t)));
         (start, self.slices.len())
@@ -229,8 +228,7 @@ where
 
 impl<'a, T, R, O> ReserveItems<&'a [T]> for SliceRegion<R, O>
 where
-    R: ReserveItems<&'a T>,
-    R: Region,
+    R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(&mut self, items: I)
@@ -244,8 +242,7 @@ where
 
 impl<C, T, O> Push<Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    C: Push<T>,
+    C: Region + Push<T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
@@ -259,8 +256,7 @@ where
 
 impl<C, T, O> Push<&Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> SliceRegion<C, O>: Push<&'a [T]>,
+    for<'a> C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
@@ -269,40 +265,37 @@ where
     }
 }
 
-impl<C, T, O> Push<&&Vec<T>> for SliceRegion<C, O>
+impl<'a, C, T, O> Push<&&'a Vec<T>> for SliceRegion<C, O>
 where
-    C: Region,
-    for<'a> SliceRegion<C, O>: Push<&'a [T]>,
+    C: Region + Push<&'a T>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn push(&mut self, item: &&Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
+    fn push(&mut self, item: &&'a Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
         self.push(item.as_slice())
     }
 }
 
-impl<'b, T, R, O> ReserveItems<&'b Vec<T>> for SliceRegion<R, O>
+impl<'a, T, R, O> ReserveItems<&'a Vec<T>> for SliceRegion<R, O>
 where
-    for<'a> R: ReserveItems<&'a T>,
-    R: Region,
+    R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = &'b Vec<T>> + Clone,
+        I: Iterator<Item = &'a Vec<T>> + Clone,
     {
         self.reserve_items(items.map(Deref::deref));
     }
 }
 
-impl<C, O> Push<ReadSlice<'_, C, O>> for SliceRegion<C, O>
+impl<'a, C, O> Push<ReadSlice<'a, C, O>> for SliceRegion<C, O>
 where
-    for<'a> C: Region,
-    for<'a> C: Push<<C as Region>::ReadItem<'a>>,
+    C: Region + Push<<C as Region>::ReadItem<'a>>,
     O: OffsetContainer<C::Index>,
 {
     #[inline]
-    fn push(&mut self, item: ReadSlice<'_, C, O>) -> <SliceRegion<C, O> as Region>::Index {
+    fn push(&mut self, item: ReadSlice<'a, C, O>) -> <SliceRegion<C, O> as Region>::Index {
         let ReadSlice { region, start, end } = item;
         let start_len = self.slices.len();
         for index in start..end {
@@ -316,8 +309,7 @@ where
 
 impl<T, R, O, const N: usize> Push<[T; N]> for SliceRegion<R, O>
 where
-    for<'a> R: Region,
-    for<'a> Self: Push<&'a [T]>,
+    for<'a> R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
@@ -328,8 +320,7 @@ where
 
 impl<'a, T, R, O, const N: usize> Push<&'a [T; N]> for SliceRegion<R, O>
 where
-    SliceRegion<R, O>: Push<&'a [T]>,
-    R: Region,
+    R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
@@ -338,22 +329,20 @@ where
     }
 }
 
-impl<T, R, O, const N: usize> Push<&&[T; N]> for SliceRegion<R, O>
+impl<'a, T, R, O, const N: usize> Push<&&'a [T; N]> for SliceRegion<R, O>
 where
-    for<'b> SliceRegion<R, O>: Push<&'b [T]>,
-    R: Region,
+    R: Region + Push<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     #[inline]
-    fn push(&mut self, item: &&[T; N]) -> <SliceRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: &&'a [T; N]) -> <SliceRegion<R, O> as Region>::Index {
         self.push(item.as_slice())
     }
 }
 
 impl<'a, T, R, O, const N: usize> ReserveItems<&'a [T; N]> for SliceRegion<R, O>
 where
-    R: ReserveItems<&'a T>,
-    R: Region,
+    R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(&mut self, items: I)
@@ -366,8 +355,7 @@ where
 
 impl<'a, R, O> ReserveItems<ReadSlice<'a, R, O>> for SliceRegion<R, O>
 where
-    R: ReserveItems<<R as Region>::ReadItem<'a>> + 'a,
-    R: Region,
+    R: Region + ReserveItems<<R as Region>::ReadItem<'a>> + 'a,
     O: OffsetContainer<R::Index>,
 {
     fn reserve_items<I>(&mut self, items: I)

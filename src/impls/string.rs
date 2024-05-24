@@ -89,8 +89,7 @@ impl Containerized for &str {
 
 impl<R> Push<String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: Push<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
     fn push(&mut self, item: String) -> <StringRegion<R> as Region>::Index {
@@ -100,8 +99,7 @@ where
 
 impl<R> Push<&String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: Push<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
     fn push(&mut self, item: &String) -> <StringRegion<R> as Region>::Index {
@@ -111,8 +109,7 @@ where
 
 impl<'b, R> ReserveItems<&'b String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: ReserveItems<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
 {
     fn reserve_items<I>(&mut self, items: I)
     where
@@ -124,8 +121,7 @@ where
 
 impl<R> Push<&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: Push<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
     fn push(&mut self, item: &str) -> <StringRegion<R> as Region>::Index {
@@ -135,8 +131,7 @@ where
 
 impl<R> Push<&&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: Push<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
     fn push(&mut self, item: &&str) -> <StringRegion<R> as Region>::Index {
@@ -146,8 +141,7 @@ where
 
 impl<'b, R> ReserveItems<&'b str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: ReserveItems<&'a [u8]>,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -158,15 +152,14 @@ where
     }
 }
 
-impl<'b, R> ReserveItems<&'b &'b str> for StringRegion<R>
+impl<'a, R> ReserveItems<&'a &'a str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-    for<'a> R: ReserveItems<&'a [u8]>,
+    for<'b> R: Region<ReadItem<'b> = &'b [u8]> + ReserveItems<&'b [u8]> + 'b,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = &'b &'b str> + Clone,
+        I: Iterator<Item = &'a &'a str> + Clone,
     {
         self.reserve_items(items.copied());
     }

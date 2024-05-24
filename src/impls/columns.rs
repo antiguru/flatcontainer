@@ -141,7 +141,7 @@ where
 {
     fn default() -> Self {
         Self {
-            indices: Default::default(),
+            indices: ConsecutiveOffsetPairs::default(),
             inner: Vec::default(),
         }
     }
@@ -240,8 +240,7 @@ where
 
 impl<R> Push<ReadColumns<'_, R>> for ColumnsRegion<R>
 where
-    R: Region,
-    for<'a> R: Push<<R as Region>::ReadItem<'a>>,
+    for<'a> R: Region + Push<<R as Region>::ReadItem<'a>>,
 {
     fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.
@@ -259,8 +258,7 @@ where
 
 impl<'a, R, T> Push<&'a [T]> for ColumnsRegion<R>
 where
-    R: Region,
-    R: Push<&'a T>,
+    R: Region + Push<&'a T>,
 {
     fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R> as Region>::Index {
         // Ensure all required regions exist.

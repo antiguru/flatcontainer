@@ -33,7 +33,8 @@ macro_rules! tuple_flatcontainer {
 
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
-                    Self: 'a {
+                    Self: 'a,
+                {
                     Self {
                         $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
                     }
@@ -50,7 +51,8 @@ macro_rules! tuple_flatcontainer {
                 fn reserve_regions<'a, It>(&mut self, regions: It)
                 where
                     Self: 'a,
-                    It: Iterator<Item = &'a Self> + Clone {
+                    It: Iterator<Item = &'a Self> + Clone,
+                {
                     $(self.[<container $name>].reserve_regions(regions.clone().map(|r| &r.[<container $name>]));)*
                 }
 
@@ -66,11 +68,9 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name, [<$name _C>]: Region ),*>
-                Push<($($name,)*)>
-                for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
-                where
-                    $([<$name _C>]: Push<$name>),*
+            impl<$($name, [<$name _C>]: Region ),*> Push<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Push<$name>),*
             {
                 fn push(&mut self, item: ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
@@ -81,11 +81,9 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<'a, $($name, [<$name _C>]: Region ),*>
-                Push<&'a ($($name,)*)>
-                for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
-                where
-                    $([<$name _C>]: Push<&'a $name>),*
+            impl<'a, $($name, [<$name _C>]),*> Push<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + Push<&'a $name>),*
             {
                 fn push(&mut self, item: &'a ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
@@ -96,30 +94,27 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<'a, $($name, [<$name _C>]: Region ),*>
-                ReserveItems<&'a ($($name,)*)>
-                for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
-                where
-                    $([<$name _C>]: ReserveItems<&'a $name>),*
+            impl<'a, $($name, [<$name _C>]),*> ReserveItems<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + ReserveItems<&'a $name>),*
             {
                 fn reserve_items<It>(&mut self, items: It)
                 where
-                    It: Iterator<Item = &'a ($($name,)*)> + Clone {
+                    It: Iterator<Item = &'a ($($name,)*)> + Clone,
+                {
                         tuple_flatcontainer!(reserve_items self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
                 }
             }
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name, [<$name _C>]: Region ),*>
-                ReserveItems<($($name,)*)>
-                for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
-                where
-                    $([<$name _C>]: ReserveItems<$name>),*
+            impl<$($name, [<$name _C>]),*> ReserveItems<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + ReserveItems<$name>),*
             {
                 fn reserve_items<It>(&mut self, items: It)
                 where
-                    It: Iterator<Item = ($($name,)*)> + Clone
+                    It: Iterator<Item = ($($name,)*)> + Clone,
                 {
                         tuple_flatcontainer!(reserve_items_owned self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
                 }

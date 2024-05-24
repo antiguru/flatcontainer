@@ -82,10 +82,8 @@ where
 
 impl<T, TC, E, EC> Push<Result<T, E>> for ResultRegion<TC, EC>
 where
-    TC: Region,
-    EC: Region,
-    TC: Push<T>,
-    EC: Push<E>,
+    TC: Region + Push<T>,
+    EC: Region + Push<E>,
 {
     #[inline]
     fn push(&mut self, item: Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
@@ -98,10 +96,8 @@ where
 
 impl<'a, T: 'a, TC, E: 'a, EC> Push<&'a Result<T, E>> for ResultRegion<TC, EC>
 where
-    TC: Region,
-    EC: Region,
-    TC: Push<&'a T>,
-    EC: Push<&'a E>,
+    TC: Region + Push<&'a T>,
+    EC: Region + Push<&'a E>,
 {
     #[inline]
     fn push(&mut self, item: &'a Result<T, E>) -> <ResultRegion<TC, EC> as Region>::Index {
@@ -114,10 +110,8 @@ where
 
 impl<'a, T: 'a, TC, E: 'a, EC> ReserveItems<&'a Result<T, E>> for ResultRegion<TC, EC>
 where
-    TC: Region,
-    EC: Region,
-    TC: ReserveItems<&'a T>,
-    EC: ReserveItems<&'a E>,
+    TC: Region + ReserveItems<&'a T>,
+    EC: Region + ReserveItems<&'a E>,
 {
     fn reserve_items<I>(&mut self, items: I)
     where

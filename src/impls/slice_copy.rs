@@ -126,7 +126,7 @@ impl<T: Clone> Push<&[T]> for OwnedRegion<T> {
 
 impl<T: Clone> Push<&&[T]> for OwnedRegion<T>
 where
-    for<'a> OwnedRegion<T>: Push<&'a [T]>,
+    for<'a> Self: Push<&'a [T]>,
 {
     #[inline]
     fn push(&mut self, item: &&[T]) -> <OwnedRegion<T> as Region>::Index {
