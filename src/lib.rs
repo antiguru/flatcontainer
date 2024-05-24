@@ -15,6 +15,7 @@ pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_copy::OwnedRegion;
 pub use impls::string::StringRegion;
+use crate::impls::offsets::OffsetContainer;
 
 /// An index into a region. Automatically implemented for relevant types.
 ///
@@ -99,27 +100,27 @@ pub trait ReserveItems<T>: Region {
 #[cfg_attr(
     feature = "serde",
     serde(
-        bound = "R: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
+        bound = "R: Serialize + for<'a> Deserialize<'a>, O: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
     )
 )]
-pub struct FlatStack<R: Region> {
+pub struct FlatStack<R: Region, O = Vec<<R as Region>::Index>> {
     /// The indices, which we use to lookup items in the region.
-    indices: Vec<R::Index>,
+    indices: O,
     /// A region to index into.
     region: R,
 }
 
-impl<R: Region> Default for FlatStack<R> {
+impl<R: Region, O: Default> Default for FlatStack<R, O> {
     #[inline]
     fn default() -> Self {
         Self {
-            indices: Vec::default(),
+            indices: O::default(),
             region: R::default(),
         }
     }
 }
 
-impl<R: Region> Debug for FlatStack<R>
+impl<R: Region> Debug for FlatStack<R, Vec<R::Index>>
 where
     for<'a> R::ReadItem<'a>: Debug,
 {
@@ -128,37 +129,7 @@ where
     }
 }
 
-impl<R: Region> FlatStack<R> {
-    /// Default implementation based on the preference of type `T`.
-    #[inline]
-    #[must_use]
-    pub fn default_impl<T: Containerized<Region = R>>() -> Self {
-        Self::default()
-    }
-
-    /// Returns a flat stack that can absorb `capacity` indices without reallocation.
-    ///
-    /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
-    #[must_use]
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            indices: Vec::with_capacity(capacity),
-            region: R::default(),
-        }
-    }
-
-    /// Returns a flat stack that can absorb the contents of `iter` without reallocation.
-    #[must_use]
-    pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
-    where
-        R: 'a,
-    {
-        Self {
-            indices: Vec::with_capacity(stacks.clone().map(|s| s.indices.len()).sum()),
-            region: R::merge_regions(stacks.map(|r| &r.region)),
-        }
-    }
-
+impl<R: Region, O: OffsetContainer<R::Index>> FlatStack<R, O> {
     /// Appends the element to the back of the stack.
     #[inline]
     pub fn copy<T>(&mut self, item: T)
@@ -173,7 +144,7 @@ impl<R: Region> FlatStack<R> {
     #[inline]
     #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'_> {
-        self.region.index(self.indices[offset])
+        self.region.index(self.indices.index(offset))
     }
 
     /// Returns the number of indices in the stack.
@@ -188,12 +159,6 @@ impl<R: Region> FlatStack<R> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
-    }
-
-    /// Returns the total number of indices the stack can hold without reallocation.
-    #[must_use]
-    pub fn capacity(&self) -> usize {
-        self.indices.capacity()
     }
 
     /// Reserves space to hold `additional` indices.
@@ -223,20 +188,57 @@ impl<R: Region> FlatStack<R> {
         self.region.reserve_regions(regions);
     }
 
-    /// Iterate the items in this stack.
-    pub fn iter(&self) -> Iter<'_, R> {
-        self.into_iter()
-    }
-
     /// Heap size, size - capacity
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
         self.indices.heap_size(callback);
     }
 }
 
-impl<T, R: Region + Push<T>> Extend<T> for FlatStack<R> {
+impl<R: Region> FlatStack<R, Vec<R::Index>> {
+    /// Default implementation based on the preference of type `T`.
+    #[inline]
+    #[must_use]
+    pub fn default_impl<T: Containerized<Region = R>>() -> Self {
+        Self::default()
+    }
+
+    /// Returns a flat stack that can absorb `capacity` indices without reallocation.
+    ///
+    /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            indices: Vec::with_capacity(capacity),
+            region: R::default(),
+        }
+    }
+
+    /// Returns a flat stack that can absorb the contents of `iter` without reallocation.
+    #[must_use]
+    pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
+        where
+            R: 'a,
+    {
+        Self {
+            indices: Vec::with_capacity(stacks.clone().map(|s| s.indices.len()).sum()),
+            region: R::merge_regions(stacks.map(|r| &r.region)),
+        }
+    }
+
+    /// Returns the total number of indices the stack can hold without reallocation.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.indices.capacity()
+    }
+
+    /// Iterate the items in this stack.
+    pub fn iter(&self) -> Iter<'_, R> {
+        self.into_iter()
+    }
+}
+
+impl<T, R: Region + Push<T>, O: OffsetContainer<R::Index>> Extend<T> for FlatStack<R, O> {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         self.reserve(iter.size_hint().0);
@@ -246,7 +248,7 @@ impl<T, R: Region + Push<T>> Extend<T> for FlatStack<R> {
     }
 }
 
-impl<'a, R: Region> IntoIterator for &'a FlatStack<R> {
+impl<'a, R: Region> IntoIterator for &'a FlatStack<R, Vec<R::Index>> {
     type Item = R::ReadItem<'a>;
     type IntoIter = Iter<'a, R>;
 
@@ -290,7 +292,7 @@ impl<R: Region> Clone for Iter<'_, R> {
     }
 }
 
-impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
+impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R, Vec<R::Index>> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
         let mut c = Self::with_capacity(iter.size_hint().0);
@@ -299,7 +301,7 @@ impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
     }
 }
 
-impl<R: Region + Clone> Clone for FlatStack<R> {
+impl<R: Region + Clone, O: OffsetContainer<R::Index> + Clone> Clone for FlatStack<R, O> {
     fn clone(&self) -> Self {
         Self {
             region: self.region.clone(),
