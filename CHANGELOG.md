@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/antiguru/flatcontainer/compare/v0.2.0...v0.3.0) - 2024-05-24
+
+### Other
+- Replace CopyOnto by Push ([#28](https://github.com/antiguru/flatcontainer/pull/28))
+- Fix bench, add to ci
+
 ## [0.2.0](https://github.com/antiguru/flatcontainer/compare/v0.1.0...v0.2.0) - 2024-03-13
 
 ### Changes
