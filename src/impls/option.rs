@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -72,6 +72,22 @@ impl<R: Region> Region for OptionRegion<R> {
         Self: 'a,
     {
         item.map(R::reborrow)
+    }
+}
+
+impl<R: OpinionatedRegion> OpinionatedRegion for OptionRegion<R> {
+    type Owned = Option<R::Owned>;
+
+    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
+        item.map(R::item_to_owned)
+    }
+
+    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned) {
+        match (item, target) {
+            (Some(item), Some(target)) => R::item_to_owned_into(item, target),
+            (Some(item), target) => *target = Some(R::item_to_owned(item)),
+            (None, target) => *target = None,
+        }
     }
 }
 

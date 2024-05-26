@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -83,6 +83,17 @@ where
         Self: 'a,
     {
         item
+    }
+}
+
+impl OpinionatedRegion for StringRegion {
+    type Owned = String;
+
+    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
+        item.to_string()
+    }
+    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned) {
+        <str as ToOwned>::clone_into(item, target);
     }
 }
 

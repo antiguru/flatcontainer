@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -86,6 +86,28 @@ where
         item.map(T::reborrow).map_err(E::reborrow)
     }
 }
+
+impl<T, E> OpinionatedRegion for ResultRegion<T, E>
+    where
+        T: OpinionatedRegion,
+        E: OpinionatedRegion,
+{
+    type Owned = Result<T::Owned, E::Owned>;
+
+    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
+        item.map(T::item_to_owned).map_err(E::item_to_owned)
+    }
+
+    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned) {
+        match (item, target) {
+            (Ok(item), Ok(target)) => T::item_to_owned_into(item, target),
+            (Err(item), Err(target)) => E::item_to_owned_into(item, target),
+            (Ok(item), target) => *target = Ok(T::item_to_owned(item)),
+            (Err(item), target) => *target = Err(E::item_to_owned(item)),
+        }
+    }
+}
+
 
 impl<T, TC, E, EC> Push<Result<T, E>> for ResultRegion<TC, EC>
 where

@@ -328,11 +328,22 @@ pub struct CopyIter<I>(pub I);
 pub trait ReadToOwned {
     /// The owned type. Static lifetime to indicate that the lifetime of the owned object must not
     /// depend on self.
-    type Owned: 'static;
+    type Owned;
     /// Convert self into an owned representation.
     fn read_to_owned(self) -> Self::Owned;
     /// Convert self into an owned representation, re-using an existing allocation.
-    fn read_to_owned_into(self, target: &mut Self::Owned);
+    fn read_to_owned_into(&self, target: &mut Self::Owned);
+}
+
+/// TODO
+pub trait OpinionatedRegion: Region { //where for<'a> <Self as Region>::ReadItem<'a>: ReadToOwned<Owned=Self::Owned> {
+    /// TODO
+    type Owned;
+
+    /// TODO
+    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned;
+    /// TODO
+    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned);
 }
 
 impl<T: ToOwned + ?Sized> ReadToOwned for &T
@@ -345,8 +356,8 @@ where
         self.to_owned()
     }
 
-    fn read_to_owned_into(self, target: &mut Self::Owned) {
-        self.clone_into(target);
+    fn read_to_owned_into(&self, target: &mut Self::Owned) {
+        <T as ToOwned>::clone_into(self, target);
     }
 }
 
@@ -436,7 +447,7 @@ mod tests {
                 hobbies: self.hobbies.iter().map(|s| s.to_string()).collect(),
             }
         }
-        fn read_to_owned_into(self, target: &mut Person) {
+        fn read_to_owned_into(&self, target: &mut Person) {
             target.name.clear();
             target.name.push_str(self.name);
             target.age = self.age;
@@ -747,10 +758,10 @@ mod tests {
         c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
     }
 
-    fn owned_roundtrip<R>(region: &mut R, index: R::Index)
+    fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
     where
         for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as ReadToOwned>::Owned>,
-        for<'a> R::ReadItem<'a>: ReadToOwned,
+        for<'a> R::ReadItem<'a>: ReadToOwned<Owned=O>,
     {
         let item = region.index(index).read_to_owned();
         region.push(item);
