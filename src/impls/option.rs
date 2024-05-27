@@ -66,6 +66,13 @@ impl<R: Region> Region for OptionRegion<R> {
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.inner.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        item.map(R::reborrow)
+    }
 }
 
 impl<T, TR> Push<Option<T>> for OptionRegion<TR>

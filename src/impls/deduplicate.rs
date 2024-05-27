@@ -70,6 +70,13 @@ impl<R: Region> Region for CollapseSequence<R> {
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.inner.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        R::reborrow(item)
+    }
 }
 
 impl<R, T> Push<T> for CollapseSequence<R>
@@ -135,8 +142,10 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
     }
 }
 
-impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
-    for ConsecutiveOffsetPairs<R, O>
+impl<R, O> Region for ConsecutiveOffsetPairs<R, O>
+where
+    R: Region<Index = (usize, usize)>,
+    O: OffsetContainer<usize>,
 {
     type ReadItem<'a> = R::ReadItem<'a>
     where
@@ -180,6 +189,13 @@ impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Region
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         self.offsets.heap_size(&mut callback);
         self.inner.heap_size(callback);
+    }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        R::reborrow(item)
     }
 }
 

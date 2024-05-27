@@ -103,6 +103,13 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
         self.slices.heap_size(&mut callback);
         self.inner.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        item
+    }
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {

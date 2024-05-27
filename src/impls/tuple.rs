@@ -64,6 +64,13 @@ macro_rules! tuple_flatcontainer {
                 fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
                     $(self.[<container $name>].heap_size(&mut callback);)*
                 }
+
+                fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b> where Self: 'a {
+                    let ($($name,)*) = item;
+                    (
+                        $($name::reborrow($name),)*
+                    )
+                }
             }
 
             #[allow(non_camel_case_types)]

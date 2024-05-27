@@ -110,6 +110,13 @@ where
         self.inner.heap_size(&mut callback);
         self.codec.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        C: 'a,
+    {
+        item
+    }
 }
 
 impl<C: Codec, R> Push<&[u8]> for CodecRegion<C, R>
