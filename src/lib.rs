@@ -41,7 +41,7 @@ impl<T: Copy> Index for T {}
 ///
 /// Implement the [`Push`] trait for all types that can be copied into a region.
 pub trait Region: Default {
-    /// TODO
+    /// An owned type that can be constructed from a read item.
     type Owned;
 
     /// The type of the data that one gets out of the container.
@@ -355,45 +355,6 @@ impl<R: Region + Clone> Clone for FlatStack<R> {
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct CopyIter<I>(pub I);
 
-/// Conversion of references to owned data. Similar to [`ToOwned`], but without the requirement
-/// that target can be borrowed to self.
-///
-/// The clumsy names originate from `to_owned` already being in scope.
-pub trait ReadToOwned {
-    /// The owned type. Static lifetime to indicate that the lifetime of the owned object must not
-    /// depend on self.
-    type Owned;
-    /// Convert self into an owned representation.
-    fn read_to_owned(self) -> Self::Owned;
-    /// Convert self into an owned representation, re-using an existing allocation.
-    fn read_to_owned_into(&self, target: &mut Self::Owned);
-}
-
-/// TODO
-pub trait OpinionatedRegion: Region {
-    //where for<'a> <Self as Region>::ReadItem<'a>: ReadToOwned<Owned=Self::Owned> {
-
-    /// TODO
-    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned;
-    /// TODO
-    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned);
-}
-
-impl<T: ToOwned + ?Sized> ReadToOwned for &T
-where
-    T::Owned: 'static,
-{
-    type Owned = T::Owned;
-
-    fn read_to_owned(self) -> Self::Owned {
-        self.to_owned()
-    }
-
-    fn read_to_owned_into(&self, target: &mut Self::Owned) {
-        <T as ToOwned>::clone_into(self, target);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
@@ -494,26 +455,6 @@ mod tests {
                 age: owned.age,
                 hobbies: IntoOwned::borrow_as(&owned.hobbies),
             }
-        }
-    }
-
-    impl ReadToOwned for PersonRef<'_> {
-        type Owned = Person;
-        fn read_to_owned(self) -> Person {
-            Person {
-                name: self.name.to_string(),
-                age: self.age,
-                hobbies: self.hobbies.iter().map(|s| s.to_string()).collect(),
-            }
-        }
-        fn read_to_owned_into(&self, target: &mut Person) {
-            target.name.clear();
-            target.name.push_str(self.name);
-            target.age = self.age;
-            target.hobbies.clear();
-            target
-                .hobbies
-                .extend(self.hobbies.iter().map(str::to_string));
         }
     }
 
@@ -820,11 +761,13 @@ mod tests {
 
     fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
     where
-        for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as ReadToOwned>::Owned>,
-        for<'a> R::ReadItem<'a>: ReadToOwned<Owned = O>,
+        for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
+        for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O>,
     {
-        let item = region.index(index).read_to_owned();
-        region.push(item);
+        let item = region.index(index);
+        let owned = item.into_owned();
+        let index = region.push(owned);
+        assert_eq!(item, region.index(index));
     }
 
     #[test]

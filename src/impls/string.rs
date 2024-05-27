@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
+use crate::{Containerized, Push, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -84,15 +84,6 @@ where
         Self: 'a,
     {
         item
-    }
-}
-
-impl OpinionatedRegion for StringRegion {
-    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
-        item.to_string()
-    }
-    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned) {
-        <str as ToOwned>::clone_into(item, target);
     }
 }
 
@@ -184,7 +175,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{Push, ReadToOwned, Region, ReserveItems, StringRegion};
+    use crate::{IntoOwned, Push, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
@@ -244,7 +235,7 @@ mod tests {
 
         let idx = r.push("abc");
         let reference = r.index(idx);
-        let owned = reference.read_to_owned();
+        let owned = reference.into_owned();
         let idx = r.push(owned);
         assert_eq!("abc", r.index(idx));
     }

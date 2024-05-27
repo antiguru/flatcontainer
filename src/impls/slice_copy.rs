@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CopyIter, OpinionatedRegion, Push, Region, ReserveItems};
+use crate::{CopyIter, Push, Region, ReserveItems};
 
 /// A container for owned types.
 ///
@@ -81,27 +81,6 @@ where
         Self: 'a,
     {
         item
-    }
-}
-
-impl<T: Clone> OpinionatedRegion for OwnedRegion<T>
-where
-    [T]: ToOwned<Owned = Vec<T>>,
-{
-    fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
-        item.to_vec()
-    }
-    fn item_to_owned_into(item: Self::ReadItem<'_>, target: &mut Self::Owned) {
-        let mut valid = 0;
-        for (index, element) in item.iter().enumerate() {
-            if target.len() > index {
-                target[index].clone_from(element);
-            } else {
-                target.push(element.clone());
-            }
-            valid += 1;
-        }
-        target.truncate(valid);
     }
 }
 

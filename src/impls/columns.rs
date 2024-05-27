@@ -277,6 +277,7 @@ where
             item.clone_onto(target);
         }
         other.extend(self.iter().skip(r).map(IntoOwned::into_owned));
+        other.truncate(self.len());
     }
 
     fn borrow_as(owned: &'a Self::Owned) -> Self {
