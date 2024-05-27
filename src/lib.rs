@@ -475,15 +475,25 @@ mod tests {
         type Owned = Person;
 
         fn into_owned(self) -> Self::Owned {
-            todo!()
+            Person {
+                name: self.name.into_owned(),
+                age: self.age,
+                hobbies: self.hobbies.into_owned(),
+            }
         }
 
         fn clone_onto(self, other: &mut Self::Owned) {
-            todo!()
+            self.name.clone_onto(&mut other.name);
+            other.age = self.age;
+            self.hobbies.clone_onto(&mut other.hobbies);
         }
 
         fn borrow_as(owned: &'a Self::Owned) -> Self {
-            todo!()
+            Self {
+                name: IntoOwned::borrow_as(&owned.name),
+                age: owned.age,
+                hobbies: IntoOwned::borrow_as(&owned.hobbies),
+            }
         }
     }
 

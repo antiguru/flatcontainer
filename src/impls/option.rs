@@ -91,7 +91,9 @@ impl<R: OpinionatedRegion> OpinionatedRegion for OptionRegion<R> {
 }
 
 impl<'a, T> IntoOwned<'a> for Option<T>
-where T: IntoOwned<'a> {
+where
+    T: IntoOwned<'a>,
+{
     type Owned = Option<T::Owned>;
 
     fn into_owned(self) -> Self::Owned {
