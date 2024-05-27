@@ -43,6 +43,7 @@ impl<R> Region for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
+    type Owned = String;
     type ReadItem<'a> = &'a str where Self: 'a ;
     type Index = R::Index;
 
@@ -87,8 +88,6 @@ where
 }
 
 impl OpinionatedRegion for StringRegion {
-    type Owned = String;
-
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
         item.to_string()
     }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
-use crate::CopyIter;
+use crate::{CopyIter, IntoOwned};
 use crate::{OwnedRegion, Push, Region};
 
 /// A region that can store a variable number of elements per row.
@@ -71,6 +71,7 @@ impl<R> Region for ColumnsRegion<R>
 where
     R: Region,
 {
+    type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
     type Index = usize;
 
@@ -212,6 +213,25 @@ where
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.index.is_empty()
+    }
+}
+
+impl<'a, R> IntoOwned<'a> for ReadColumns<'a, R>
+where
+    R: Region,
+{
+    type Owned = Vec<R::Owned>;
+
+    fn into_owned(self) -> Self::Owned {
+        self.iter().map(IntoOwned::into_owned).collect()
+    }
+
+    fn clone_onto(&self, other: &mut Self::Owned) {
+        todo!()
+    }
+
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        todo!()
     }
 }
 

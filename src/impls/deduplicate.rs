@@ -37,6 +37,7 @@ impl<R: Region> Default for CollapseSequence<R> {
 }
 
 impl<R: Region> Region for CollapseSequence<R> {
+    type Owned = R::Owned;
     type ReadItem<'a> = R::ReadItem<'a> where Self: 'a;
     type Index = R::Index;
 
@@ -147,6 +148,7 @@ where
     R: Region<Index = (usize, usize)>,
     O: OffsetContainer<usize>,
 {
+    type Owned = R::Owned;
     type ReadItem<'a> = R::ReadItem<'a>
     where
         Self: 'a;

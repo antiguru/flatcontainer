@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -27,6 +27,7 @@ macro_rules! tuple_flatcontainer {
             where
                $(<$name as Region>::Index: crate::Index),*
             {
+                type Owned = ($($name::Owned,)*);
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
 
                 type Index = ($($name::Index,)*);
@@ -96,6 +97,27 @@ macro_rules! tuple_flatcontainer {
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = item;
                     ($(self.[<container $name>].push($name),)*)
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<'a, $($name),*> IntoOwned<'a> for ($($name,)*)
+            where
+                $($name: IntoOwned<'a>),*
+            {
+                type Owned = ($($name::Owned,)*);
+
+                fn into_owned(self) -> Self::Owned {
+                    todo!()
+                }
+
+                fn clone_onto(&self, other: &mut Self::Owned) {
+                    todo!()
+                }
+
+                fn borrow_as(owned: &'a Self::Owned) -> Self {
+                    todo!()
                 }
             }
 

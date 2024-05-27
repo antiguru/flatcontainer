@@ -7,7 +7,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Containerized, OpinionatedRegion, Push, ReadToOwned, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, OpinionatedRegion, Push, ReadToOwned, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Vec<T> {
     type Region = SliceRegion<T::Region>;
@@ -60,6 +60,7 @@ pub struct SliceRegion<C: Region, O: OffsetContainer<C::Index> = Vec<<C as Regio
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
+    type Owned = Vec<C::Owned>;
     type ReadItem<'a> = ReadSlice<'a, C, O> where Self: 'a;
     type Index = (usize, usize);
 
@@ -112,8 +113,10 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
     }
 }
 
-impl<C: OpinionatedRegion, O: OffsetContainer<C::Index>> OpinionatedRegion for SliceRegion<C, O> where for<'a> <C as Region>::ReadItem<'a>: ReadToOwned<Owned=C::Owned> {
-    type Owned = Vec<C::Owned>;
+impl<C: OpinionatedRegion, O: OffsetContainer<C::Index>> OpinionatedRegion for SliceRegion<C, O>
+where
+    for<'a> <C as Region>::ReadItem<'a>: ReadToOwned<Owned = C::Owned>,
+{
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
         item.iter().map(ReadToOwned::read_to_owned).collect()
     }
@@ -205,6 +208,24 @@ impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
+
+impl<'a, C, O> IntoOwned<'a> for ReadSlice<'a, C, O>
+where C: Region, O: OffsetContainer<C::Index>,
+{
+    type Owned = Vec<C::Owned>;
+
+    fn into_owned(self) -> Self::Owned {
+        todo!()
+    }
+
+    fn clone_onto(&self, other: &mut Self::Owned) {
+        todo!()
+    }
+
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        todo!()
+    }
+}
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
     type Item = C::ReadItem<'a>;

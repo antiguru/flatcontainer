@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, OpinionatedRegion, Push, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -37,6 +37,7 @@ where
     T: Region,
     E: Region,
 {
+    type Owned = Result<T::Owned, E::Owned>;
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
@@ -87,13 +88,36 @@ where
     }
 }
 
-impl<T, E> OpinionatedRegion for ResultRegion<T, E>
-    where
-        T: OpinionatedRegion,
-        E: OpinionatedRegion,
+impl<'a, T, E> IntoOwned<'a> for Result<T, E>
+where
+    T: IntoOwned<'a>,
+    E: IntoOwned<'a>,
 {
     type Owned = Result<T::Owned, E::Owned>;
 
+    fn into_owned(self) -> Self::Owned {
+        self.map(T::into_owned).map_err(E::into_owned)
+    }
+
+    fn clone_onto(&self, other: &mut Self::Owned) {
+        match (self, other) {
+            (Ok(item), Ok(target)) => T::clone_onto(item, target),
+            (Err(item), Err(target)) => E::clone_onto(item, target),
+            (Ok(item), target) => *target = Ok(T::into_owned(item)),
+            (Err(item), target) => *target = Err(E::into_owned(item)),
+        }
+    }
+
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        owned.map(T::borrow_as).map_err(E::borrow_as)
+    }
+}
+
+impl<T, E> OpinionatedRegion for ResultRegion<T, E>
+where
+    T: OpinionatedRegion,
+    E: OpinionatedRegion,
+{
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
         item.map(T::item_to_owned).map_err(E::item_to_owned)
     }
@@ -107,7 +131,6 @@ impl<T, E> OpinionatedRegion for ResultRegion<T, E>
         }
     }
 }
-
 
 impl<T, TC, E, EC> Push<Result<T, E>> for ResultRegion<TC, EC>
 where

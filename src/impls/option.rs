@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, OpinionatedRegion, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, OpinionatedRegion, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -32,7 +32,8 @@ pub struct OptionRegion<R> {
 }
 
 impl<R: Region> Region for OptionRegion<R> {
-    type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
+    type Owned = Option<R::Owned>;
+    type ReadItem<'a> = Option<<R as Region>::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -76,8 +77,6 @@ impl<R: Region> Region for OptionRegion<R> {
 }
 
 impl<R: OpinionatedRegion> OpinionatedRegion for OptionRegion<R> {
-    type Owned = Option<R::Owned>;
-
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
         item.map(R::item_to_owned)
     }
@@ -88,6 +87,23 @@ impl<R: OpinionatedRegion> OpinionatedRegion for OptionRegion<R> {
             (Some(item), target) => *target = Some(R::item_to_owned(item)),
             (None, target) => *target = None,
         }
+    }
+}
+
+impl<'a, T> IntoOwned<'a> for Option<T>
+where T: IntoOwned<'a> {
+    type Owned = Option<T::Owned>;
+
+    fn into_owned(self) -> Self::Owned {
+        self.map(IntoOwned::into_owned)
+    }
+
+    fn clone_onto(&self, other: &mut Self::Owned) {
+        todo!()
+    }
+
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        todo!()
     }
 }
 

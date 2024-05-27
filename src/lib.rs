@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
 
 #[cfg(feature = "serde")]
@@ -40,8 +41,11 @@ impl<T: Copy> Index for T {}
 ///
 /// Implement the [`Push`] trait for all types that can be copied into a region.
 pub trait Region: Default {
+    /// TODO
+    type Owned;
+
     /// The type of the data that one gets out of the container.
-    type ReadItem<'a>
+    type ReadItem<'a>: IntoOwned<'a, Owned = Self::Owned>
     where
         Self: 'a;
 
@@ -97,6 +101,36 @@ pub trait ReserveItems<T>: Region {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = T> + Clone;
+}
+
+/// A reference type corresponding to an owned type, supporting conversion in each direction.
+///
+/// This trait can be implemented by a GAT, and enables owned types to be borrowed as a GAT.
+/// This trait is analogous to `ToOwned`, but not as prescriptive. Specifically, it avoids the
+/// requirement that the other trait implement `Borrow`, for which a borrow must result in a
+/// `&'self Borrowed`, which cannot move the lifetime into a GAT borrowed type.
+pub trait IntoOwned<'a> {
+    /// Owned type into which this type can be converted.
+    type Owned;
+    /// Conversion from an instance of this type to the owned type.
+    fn into_owned(self) -> Self::Owned;
+    /// Clones `self` onto an existing instance of the owned type.
+    fn clone_onto(&self, other: &mut Self::Owned);
+    /// Borrows an owned instance as oneself.
+    fn borrow_as(owned: &'a Self::Owned) -> Self;
+}
+
+impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
+    type Owned = T::Owned;
+    fn into_owned(self) -> Self::Owned {
+        self.to_owned()
+    }
+    fn clone_onto(&self, other: &mut Self::Owned) {
+        <T as ToOwned>::clone_into(self, other)
+    }
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        owned.borrow()
+    }
 }
 
 /// A container for indices into a region.
@@ -336,9 +370,8 @@ pub trait ReadToOwned {
 }
 
 /// TODO
-pub trait OpinionatedRegion: Region { //where for<'a> <Self as Region>::ReadItem<'a>: ReadToOwned<Owned=Self::Owned> {
-    /// TODO
-    type Owned;
+pub trait OpinionatedRegion: Region {
+    //where for<'a> <Self as Region>::ReadItem<'a>: ReadToOwned<Owned=Self::Owned> {
 
     /// TODO
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned;
@@ -438,6 +471,22 @@ mod tests {
         hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
     }
 
+    impl<'a> IntoOwned<'a> for PersonRef<'a> {
+        type Owned = Person;
+
+        fn into_owned(self) -> Self::Owned {
+            todo!()
+        }
+
+        fn clone_onto(&self, other: &mut Self::Owned) {
+            todo!()
+        }
+
+        fn borrow_as(owned: &'a Self::Owned) -> Self {
+            todo!()
+        }
+    }
+
     impl ReadToOwned for PersonRef<'_> {
         type Owned = Person;
         fn read_to_owned(self) -> Person {
@@ -459,6 +508,7 @@ mod tests {
     }
 
     impl Region for PersonRegion {
+        type Owned = Person;
         type ReadItem<'a> = PersonRef<'a> where Self: 'a;
         type Index = (
             <<String as Containerized>::Region as Region>::Index,
@@ -761,7 +811,7 @@ mod tests {
     fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
     where
         for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as ReadToOwned>::Owned>,
-        for<'a> R::ReadItem<'a>: ReadToOwned<Owned=O>,
+        for<'a> R::ReadItem<'a>: ReadToOwned<Owned = O>,
     {
         let item = region.index(index).read_to_owned();
         region.push(item);

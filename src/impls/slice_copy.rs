@@ -33,7 +33,8 @@ pub struct OwnedRegion<T> {
     slices: Vec<T>,
 }
 
-impl<T> Region for OwnedRegion<T> {
+impl<T> Region for OwnedRegion<T> where [T]: ToOwned {
+    type Owned = <[T] as ToOwned>::Owned;
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
@@ -80,9 +81,10 @@ impl<T> Region for OwnedRegion<T> {
     }
 }
 
-impl<T: Clone> OpinionatedRegion for OwnedRegion<T> where [T]: ToOwned<Owned=Vec<T>>{
-    type Owned = Vec<T>;
-
+impl<T: Clone> OpinionatedRegion for OwnedRegion<T>
+where
+    [T]: ToOwned<Owned = Vec<T>>,
+{
     fn item_to_owned(item: Self::ReadItem<'_>) -> Self::Owned {
         item.to_vec()
     }
@@ -108,7 +110,7 @@ impl<T> Default for OwnedRegion<T> {
     }
 }
 
-impl<T, const N: usize> Push<[T; N]> for OwnedRegion<T> {
+impl<T, const N: usize> Push<[T; N]> for OwnedRegion<T> where [T]: ToOwned {
     #[inline]
     fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
@@ -161,7 +163,7 @@ where
     }
 }
 
-impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T> {
+impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T>where [T]: ToOwned  {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b [T]> + Clone,
@@ -170,7 +172,7 @@ impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T> {
     }
 }
 
-impl<T> Push<Vec<T>> for OwnedRegion<T> {
+impl<T> Push<Vec<T>> for OwnedRegion<T> where [T]: ToOwned {
     #[inline]
     fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
@@ -186,7 +188,7 @@ impl<T: Clone> Push<&Vec<T>> for OwnedRegion<T> {
     }
 }
 
-impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T> {
+impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T> where [T]: ToOwned {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Vec<T>> + Clone,
@@ -204,7 +206,7 @@ impl<T: Clone, I: IntoIterator<Item = T>> Push<CopyIter<I>> for OwnedRegion<T> {
     }
 }
 
-impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T> {
+impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T>where [T]: ToOwned  {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = CopyIter<J>> + Clone,

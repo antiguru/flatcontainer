@@ -72,6 +72,7 @@ impl<C: Codec, R> Region for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
+    type Owned = Vec<u8>;
     type ReadItem<'a> = &'a [u8]
     where
         Self: 'a;
