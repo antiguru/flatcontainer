@@ -133,6 +133,13 @@ where
         }
         self.indices.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        item
+    }
 }
 
 impl<R> Default for ColumnsRegion<R>

@@ -78,6 +78,13 @@ where
         self.oks.heap_size(&mut callback);
         self.errs.heap_size(callback);
     }
+
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a,
+    {
+        item.map(T::reborrow).map_err(E::reborrow)
+    }
 }
 
 impl<T, TC, E, EC> Push<Result<T, E>> for ResultRegion<TC, EC>

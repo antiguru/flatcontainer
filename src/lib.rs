@@ -69,6 +69,11 @@ pub trait Region: Default {
 
     /// Heap size, size - capacity
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
+
+    /// Converts a read item into one with a narrower lifetime.
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a;
 }
 
 /// A trait to let types express a default container type.
@@ -449,6 +454,17 @@ mod tests {
             self.name_container.heap_size(&mut callback);
             self.age_container.heap_size(&mut callback);
             self.hobbies.heap_size(callback);
+        }
+
+        fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+        where
+            Self: 'a,
+        {
+            PersonRef {
+                name: <String as Containerized>::Region::reborrow(item.name),
+                age: <u16 as Containerized>::Region::reborrow(item.age),
+                hobbies: <Vec<String> as Containerized>::Region::reborrow(item.hobbies),
+            }
         }
     }
 
