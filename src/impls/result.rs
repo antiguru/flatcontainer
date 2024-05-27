@@ -99,7 +99,7 @@ where
         self.map(T::into_owned).map_err(E::into_owned)
     }
 
-    fn clone_onto(&self, other: &mut Self::Owned) {
+    fn clone_onto(self, other: &mut Self::Owned) {
         match (self, other) {
             (Ok(item), Ok(target)) => T::clone_onto(item, target),
             (Err(item), Err(target)) => E::clone_onto(item, target),
@@ -109,7 +109,7 @@ where
     }
 
     fn borrow_as(owned: &'a Self::Owned) -> Self {
-        owned.map(T::borrow_as).map_err(E::borrow_as)
+        owned.as_ref().map(T::borrow_as).map_err(E::borrow_as)
     }
 }
 

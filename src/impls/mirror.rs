@@ -155,8 +155,8 @@ macro_rules! implement_for {
                 self
             }
 
-            fn clone_onto(&self, other: &mut Self::Owned) {
-                *other = *self;
+            fn clone_onto(self, other: &mut Self::Owned) {
+                *other = self;
             }
 
             fn borrow_as(owned: &'a Self::Owned) -> Self {

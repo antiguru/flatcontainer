@@ -218,7 +218,7 @@ where C: Region, O: OffsetContainer<C::Index>,
         todo!()
     }
 
-    fn clone_onto(&self, other: &mut Self::Owned) {
+    fn clone_onto(self, other: &mut Self::Owned) {
         todo!()
     }
 

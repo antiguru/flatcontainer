@@ -112,7 +112,7 @@ macro_rules! tuple_flatcontainer {
                     todo!()
                 }
 
-                fn clone_onto(&self, other: &mut Self::Owned) {
+                fn clone_onto(self, other: &mut Self::Owned) {
                     todo!()
                 }
 

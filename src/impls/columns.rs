@@ -226,7 +226,7 @@ where
         self.iter().map(IntoOwned::into_owned).collect()
     }
 
-    fn clone_onto(&self, other: &mut Self::Owned) {
+    fn clone_onto(self, other: &mut Self::Owned) {
         todo!()
     }
 

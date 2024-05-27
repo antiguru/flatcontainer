@@ -98,12 +98,16 @@ where T: IntoOwned<'a> {
         self.map(IntoOwned::into_owned)
     }
 
-    fn clone_onto(&self, other: &mut Self::Owned) {
-        todo!()
+    fn clone_onto(self, other: &mut Self::Owned) {
+        match (self, other) {
+            (Some(item), Some(target)) => T::clone_onto(item, target),
+            (Some(item), target) => *target = Some(T::into_owned(item)),
+            (None, target) => *target = None,
+        }
     }
 
     fn borrow_as(owned: &'a Self::Owned) -> Self {
-        todo!()
+        owned.as_ref().map(T::borrow_as)
     }
 }
 
