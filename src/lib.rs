@@ -425,7 +425,7 @@ mod tests {
         hobbies: <Vec<String> as Containerized>::Region,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     struct PersonRef<'a> {
         name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
         age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
@@ -759,21 +759,40 @@ mod tests {
         c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
     }
 
-    fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
-    where
-        for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
-        for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O>,
-    {
-        let item = region.index(index);
-        let owned = item.into_owned();
-        let index = region.push(owned);
-        assert_eq!(item, region.index(index));
-    }
-
     #[test]
     fn test_owned() {
+        fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
+        where
+            for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
+            for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O> + Eq + Debug,
+        {
+            let item = region.index(index);
+            let owned = item.into_owned();
+            let index2 = region.push(owned);
+            let item = region.index(index);
+            assert_eq!(item, region.index(index2));
+        }
+
         let mut c = <StringRegion>::default();
         let index = c.push("abc".to_string());
         owned_roundtrip(&mut c, index);
+    }
+
+    /// Test that items and owned variants can be reborrowed to shorten their lifetimes.
+    fn _test_reborrow<R>(item: R::ReadItem<'_>, owned: &R::Owned)
+    where
+        R: Region,
+        for<'a> R::ReadItem<'a>: Eq,
+    {
+        // The following line requires `reborrow` because otherwise owned must outlive '_.
+        // fn _test_reborrow<R>(item: R::ReadItem<'_>, owned: &R::Owned) where R: Region, for<'a> R::ReadItem<'a>: Eq {
+        //                      ----                          - let's call the lifetime of this reference `'1`
+        //                      |
+        //                      has type `<R as Region>::ReadItem<'2>`
+        //     // The following line requires `reborrow` because otherwise owned must outlive '_.
+        //     let _ = item == IntoOwned::borrow_as(owned);
+        //                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ argument requires that `'1` must outlive `'2`
+        // let _ = item == IntoOwned::borrow_as(owned);
+        let _ = R::reborrow(item) == R::reborrow(IntoOwned::borrow_as(owned));
     }
 }
