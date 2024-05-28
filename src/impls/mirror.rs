@@ -151,12 +151,12 @@ macro_rules! implement_for {
         impl<'a> IntoOwned<'a> for $index_type {
             type Owned = $index_type;
 
-            fn into_owned(&self) -> Self::Owned {
-                *self
+            fn into_owned(self) -> Self::Owned {
+                self
             }
 
-            fn clone_onto(&self, other: &mut Self::Owned) {
-                *other = *self;
+            fn clone_onto(self, other: &mut Self::Owned) {
+                *other = self;
             }
 
             fn borrow_as(owned: &'a Self::Owned) -> Self {

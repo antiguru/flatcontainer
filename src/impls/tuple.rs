@@ -108,14 +108,14 @@ macro_rules! tuple_flatcontainer {
             {
                 type Owned = ($($name::Owned,)*);
 
-                fn into_owned(&self) -> Self::Owned {
+                fn into_owned(self) -> Self::Owned {
                     let ($($name,)*) = self;
                     (
                         $($name.into_owned(),)*
                     )
                 }
 
-                fn clone_onto(&self, other: &mut Self::Owned) {
+                fn clone_onto(self, other: &mut Self::Owned) {
                     let ($($name,)*) = self;
                     let ($([<$name _other>],)*) = other;
                     $($name.clone_onto([<$name _other>]);)*

@@ -82,11 +82,11 @@ where
 {
     type Owned = Option<T::Owned>;
 
-    fn into_owned(&self) -> Self::Owned {
-        self.as_ref().map(IntoOwned::into_owned)
+    fn into_owned(self) -> Self::Owned {
+        self.map(IntoOwned::into_owned)
     }
 
-    fn clone_onto(&self, other: &mut Self::Owned) {
+    fn clone_onto(self, other: &mut Self::Owned) {
         match (self, other) {
             (Some(item), Some(target)) => T::clone_onto(item, target),
             (Some(item), target) => *target = Some(T::into_owned(item)),

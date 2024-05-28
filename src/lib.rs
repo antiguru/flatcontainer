@@ -113,22 +113,19 @@ pub trait IntoOwned<'a> {
     /// Owned type into which this type can be converted.
     type Owned;
     /// Conversion from an instance of this type to the owned type.
-    fn into_owned(&self) -> Self::Owned;
+    fn into_owned(self) -> Self::Owned;
     /// Clones `self` onto an existing instance of the owned type.
-    fn clone_onto(&self, other: &mut Self::Owned);
+    fn clone_onto(self, other: &mut Self::Owned);
     /// Borrows an owned instance as oneself.
     fn borrow_as(owned: &'a Self::Owned) -> Self;
 }
 
-impl<'a, T> IntoOwned<'a> for &'a T
-where
-    T: ToOwned + ?Sized,
-{
+impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
     type Owned = T::Owned;
-    fn into_owned(&self) -> Self::Owned {
-        (*self).to_owned()
+    fn into_owned(self) -> Self::Owned {
+        self.to_owned()
     }
-    fn clone_onto(&self, other: &mut Self::Owned) {
+    fn clone_onto(self, other: &mut Self::Owned) {
         <T as ToOwned>::clone_into(self, other)
     }
     fn borrow_as(owned: &'a Self::Owned) -> Self {
@@ -438,7 +435,7 @@ mod tests {
     impl<'a> IntoOwned<'a> for PersonRef<'a> {
         type Owned = Person;
 
-        fn into_owned(&self) -> Self::Owned {
+        fn into_owned(self) -> Self::Owned {
             Person {
                 name: self.name.into_owned(),
                 age: self.age,
@@ -446,7 +443,7 @@ mod tests {
             }
         }
 
-        fn clone_onto(&self, other: &mut Self::Owned) {
+        fn clone_onto(self, other: &mut Self::Owned) {
             self.name.clone_onto(&mut other.name);
             other.age = self.age;
             self.hobbies.clone_onto(&mut other.hobbies);
@@ -769,7 +766,8 @@ mod tests {
             for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
             for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O> + Eq + Debug,
         {
-            let owned = region.index(index).into_owned();
+            let item = region.index(index);
+            let owned = item.into_owned();
             let index2 = region.push(owned);
             let item = region.index(index);
             assert_eq!(item, region.index(index2));
