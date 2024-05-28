@@ -789,7 +789,7 @@ mod tests {
 
         let mut c = <StringRegion>::default();
         let index = c.push("abc".to_string());
-        owned_roundtrip(&mut c, index);
+        owned_roundtrip::<StringRegion, String>(&mut c, index);
     }
 
     /// Test that items and owned variants can be reborrowed to shorten their lifetimes.
