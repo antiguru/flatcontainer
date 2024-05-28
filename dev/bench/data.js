@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1716833942741,
+  "lastUpdate": 1716929696156,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -1871,6 +1871,318 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_realloc",
             "value": 11773918.6,
             "range": "± 463045.12",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2ed12044e3470a8e8c58eb5259196cda3228b33b",
+          "message": "Thinking about relating owned types and read items (#31)\n\nAdd IntoOwned trait, add Owned type to region, add a constraint that read items must be IntoOwned.\r\n\r\n---------\r\n\r\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-05-28T16:52:03-04:00",
+          "tree_id": "22d15ff87e4f691fb63643ba46b39b67303a19c8",
+          "url": "https://github.com/antiguru/flatcontainer/commit/2ed12044e3470a8e8c58eb5259196cda3228b33b"
+        },
+        "date": 1716929695261,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 955.65,
+            "range": "± 10.95",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "empty_copy",
+            "value": 995.06,
+            "range": "± 310.90",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "empty_copy_region",
+            "value": 1271.92,
+            "range": "± 15.40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "empty_prealloc",
+            "value": 1284.13,
+            "range": "± 23.76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "empty_realloc",
+            "value": 1285.32,
+            "range": "± 20.04",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str100_copy_region",
+            "value": 369814.17,
+            "range": "± 43323.50",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 466131.39,
+            "range": "± 55053.09",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_copy",
+            "value": 3643332.75,
+            "range": "± 16661.33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_copy_region",
+            "value": 453273.83,
+            "range": "± 8176.12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_prealloc",
+            "value": 4396561.6,
+            "range": "± 55425.36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_realloc",
+            "value": 16705509.9,
+            "range": "± 316335.39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 33085492.3,
+            "range": "± 523234.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_copy",
+            "value": 3635585.8,
+            "range": "± 19482.55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_copy_region",
+            "value": 3628937.4,
+            "range": "± 33062.31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_copy_region_collapse",
+            "value": 7909307.1,
+            "range": "± 22587.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_prealloc",
+            "value": 3977123,
+            "range": "± 21183.86",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_realloc",
+            "value": 17724395.3,
+            "range": "± 209281.49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16821454.4,
+            "range": "± 388938.13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_copy",
+            "value": 1832269.3,
+            "range": "± 23834.85",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_copy_region",
+            "value": 1832256.95,
+            "range": "± 72579.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_prealloc",
+            "value": 2007833.1,
+            "range": "± 43151.68",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_realloc",
+            "value": 5158643.5,
+            "range": "± 54722.96",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 224735.84,
+            "range": "± 5078.03",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_copy",
+            "value": 182915.64,
+            "range": "± 3948.43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_copy_region",
+            "value": 159289.6,
+            "range": "± 3013.29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_prealloc",
+            "value": 198040.03,
+            "range": "± 7954.60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_realloc",
+            "value": 215443.7,
+            "range": "± 15129.45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 222412.8,
+            "range": "± 6237.03",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_copy",
+            "value": 161678.75,
+            "range": "± 4346.75",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_copy_region",
+            "value": 159052.83,
+            "range": "± 3993.96",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_prealloc",
+            "value": 162995.71,
+            "range": "± 3734.48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_realloc",
+            "value": 176306.33,
+            "range": "± 3507.35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 222470.58,
+            "range": "± 4855.06",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_copy",
+            "value": 316948.95,
+            "range": "± 7109.89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_copy_region",
+            "value": 158954.37,
+            "range": "± 3126.18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_prealloc",
+            "value": 318479.05,
+            "range": "± 7704.17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_realloc",
+            "value": 335695.78,
+            "range": "± 4408.58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 50569076.2,
+            "range": "± 965911.84",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_copy",
+            "value": 4283227.45,
+            "range": "± 98829.80",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_copy_region",
+            "value": 4283993.4,
+            "range": "± 28866.95",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_prealloc",
+            "value": 4642167.7,
+            "range": "± 29220.93",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_realloc",
+            "value": 8497886.2,
+            "range": "± 122268.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 52828620.5,
+            "range": "± 1371016.34",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_copy",
+            "value": 5316600.9,
+            "range": "± 43705.48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_copy_region",
+            "value": 5186052.7,
+            "range": "± 92063.21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_copy_region_column",
+            "value": 6204933.5,
+            "range": "± 162935.15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_prealloc",
+            "value": 9954646.05,
+            "range": "± 320877.94",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_realloc",
+            "value": 13391576,
+            "range": "± 449137.39",
             "unit": "ns/iter"
           }
         ]
