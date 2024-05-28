@@ -1,6 +1,6 @@
 [package]
 name = "flatcontainer"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["Moritz Hoffmann <antiguru@gmail.com>"]
 description = "A flat container representation for Rust"
