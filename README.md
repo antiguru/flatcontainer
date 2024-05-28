@@ -5,7 +5,7 @@ A flat container for Rust.
 
 ```toml
 [dependencies]
-flatcontainer = "0.3"
+flatcontainer = "0.4"
 ```
 
 ## Example
