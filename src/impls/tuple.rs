@@ -32,6 +32,7 @@ macro_rules! tuple_flatcontainer {
 
                 type Index = ($($name::Index,)*);
 
+                #[inline]
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
                     Self: 'a,
@@ -62,10 +63,12 @@ macro_rules! tuple_flatcontainer {
                     $(self.[<container $name>].clear();)*
                 }
 
+                #[inline]
                 fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
                     $(self.[<container $name>].heap_size(&mut callback);)*
                 }
 
+                #[inline]
                 fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b> where Self: 'a {
                     let ($($name,)*) = item;
                     (
@@ -80,6 +83,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Push<$name>),*
             {
+                #[inline]
                 fn push(&mut self, item: ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = item;
@@ -93,6 +97,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Region + Push<&'a $name>),*
             {
+                #[inline]
                 fn push(&mut self, item: &'a ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = item;
@@ -108,6 +113,7 @@ macro_rules! tuple_flatcontainer {
             {
                 type Owned = ($($name::Owned,)*);
 
+                #[inline]
                 fn into_owned(self) -> Self::Owned {
                     let ($($name,)*) = self;
                     (
@@ -115,12 +121,14 @@ macro_rules! tuple_flatcontainer {
                     )
                 }
 
+                #[inline]
                 fn clone_onto(self, other: &mut Self::Owned) {
                     let ($($name,)*) = self;
                     let ($([<$name _other>],)*) = other;
                     $($name.clone_onto([<$name _other>]);)*
                 }
 
+                #[inline]
                 fn borrow_as(owned: &'a Self::Owned) -> Self {
                     let ($($name,)*) = owned;
                     (
@@ -135,6 +143,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Region + ReserveItems<&'a $name>),*
             {
+                #[inline]
                 fn reserve_items<It>(&mut self, items: It)
                 where
                     It: Iterator<Item = &'a ($($name,)*)> + Clone,
@@ -149,6 +158,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Region + ReserveItems<$name>),*
             {
+                #[inline]
                 fn reserve_items<It>(&mut self, items: It)
                 where
                     It: Iterator<Item = ($($name,)*)> + Clone,

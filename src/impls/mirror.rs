@@ -48,6 +48,7 @@ where
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
+    #[inline]
     fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -74,10 +75,12 @@ where
         // No storage
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
         // No storage
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -151,14 +154,17 @@ macro_rules! implement_for {
         impl<'a> IntoOwned<'a> for $index_type {
             type Owned = $index_type;
 
+            #[inline]
             fn into_owned(self) -> Self::Owned {
                 self
             }
 
+            #[inline]
             fn clone_onto(self, other: &mut Self::Owned) {
                 *other = self;
             }
 
+            #[inline]
             fn borrow_as(owned: &'a Self::Owned) -> Self {
                 *owned
             }

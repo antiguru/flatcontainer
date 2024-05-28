@@ -132,6 +132,7 @@ where
 impl<R: Region<Index = (usize, usize)>, O: OffsetContainer<usize>> Default
     for ConsecutiveOffsetPairs<R, O>
 {
+    #[inline]
     fn default() -> Self {
         let mut d = Self {
             inner: Default::default(),
@@ -155,6 +156,7 @@ where
 
     type Index = usize;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -168,11 +170,13 @@ where
         }
     }
 
+    #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner
             .index((self.offsets.index(index), self.offsets.index(index + 1)))
     }
 
+    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -181,6 +185,7 @@ where
         self.inner.reserve_regions(regions.map(|r| &r.inner));
     }
 
+    #[inline]
     fn clear(&mut self) {
         self.last_index = 0;
         self.inner.clear();
@@ -188,11 +193,13 @@ where
         self.offsets.push(0);
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         self.offsets.heap_size(&mut callback);
         self.inner.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -249,7 +256,7 @@ mod tests {
             CollapseSequence::<ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>>::default();
 
         for _ in 0..1000 {
-            r.push("abc");
+            let _ = r.push("abc");
         }
 
         println!("{r:?}");

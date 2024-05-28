@@ -36,6 +36,7 @@ impl<R: Region> Region for OptionRegion<R> {
     type ReadItem<'a> = Option<<R as Region>::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -64,10 +65,12 @@ impl<R: Region> Region for OptionRegion<R> {
         self.inner.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.inner.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -82,10 +85,12 @@ where
 {
     type Owned = Option<T::Owned>;
 
+    #[inline]
     fn into_owned(self) -> Self::Owned {
         self.map(IntoOwned::into_owned)
     }
 
+    #[inline]
     fn clone_onto(self, other: &mut Self::Owned) {
         match (self, other) {
             (Some(item), Some(target)) => T::clone_onto(item, target),
@@ -94,6 +99,7 @@ where
         }
     }
 
+    #[inline]
     fn borrow_as(owned: &'a Self::Owned) -> Self {
         owned.as_ref().map(T::borrow_as)
     }
@@ -123,6 +129,7 @@ impl<'a, T: 'a, TR> ReserveItems<&'a Option<T>> for OptionRegion<TR>
 where
     TR: Region + ReserveItems<&'a T>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Option<T>> + Clone,

@@ -41,6 +41,7 @@ where
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -75,11 +76,13 @@ where
         self.errs.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         self.oks.heap_size(&mut callback);
         self.errs.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -95,10 +98,12 @@ where
 {
     type Owned = Result<T::Owned, E::Owned>;
 
+    #[inline]
     fn into_owned(self) -> Self::Owned {
         self.map(T::into_owned).map_err(E::into_owned)
     }
 
+    #[inline]
     fn clone_onto(self, other: &mut Self::Owned) {
         match (self, other) {
             (Ok(item), Ok(target)) => T::clone_onto(item, target),
@@ -108,6 +113,7 @@ where
         }
     }
 
+    #[inline]
     fn borrow_as(owned: &'a Self::Owned) -> Self {
         owned.as_ref().map(T::borrow_as).map_err(E::borrow_as)
     }
@@ -146,6 +152,7 @@ where
     TC: Region + ReserveItems<&'a T>,
     EC: Region + ReserveItems<&'a E>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Result<T, E>> + Clone,

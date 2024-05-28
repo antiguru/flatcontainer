@@ -41,6 +41,7 @@ where
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -55,6 +56,7 @@ where
         &self.slices[start..end]
     }
 
+    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -68,6 +70,7 @@ where
         self.slices.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         let size_of_t = std::mem::size_of::<T>();
         callback(
@@ -76,6 +79,7 @@ where
         );
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -85,6 +89,7 @@ where
 }
 
 impl<T> Default for OwnedRegion<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             slices: Vec::default(),
@@ -121,6 +126,7 @@ impl<T: Clone, const N: usize> Push<&&[T; N]> for OwnedRegion<T> {
 }
 
 impl<'b, T: Clone, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T> {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b [T; N]> + Clone,
@@ -152,6 +158,7 @@ impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T>
 where
     [T]: ToOwned,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b [T]> + Clone,
@@ -183,6 +190,7 @@ impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T>
 where
     [T]: ToOwned,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Vec<T>> + Clone,
@@ -204,6 +212,7 @@ impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T>
 where
     [T]: ToOwned,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = CopyIter<J>> + Clone,

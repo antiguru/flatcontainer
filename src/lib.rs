@@ -60,6 +60,7 @@ pub trait Region: Default {
 
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
+    #[must_use]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
@@ -75,6 +76,7 @@ pub trait Region: Default {
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 
     /// Converts a read item into one with a narrower lifetime.
+    #[must_use]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a;
@@ -90,6 +92,7 @@ pub trait Containerized {
 pub trait Push<T>: Region {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
+    #[must_use]
     fn push(&mut self, item: T) -> Self::Index;
 }
 
@@ -113,21 +116,26 @@ pub trait IntoOwned<'a> {
     /// Owned type into which this type can be converted.
     type Owned;
     /// Conversion from an instance of this type to the owned type.
+    #[must_use]
     fn into_owned(self) -> Self::Owned;
     /// Clones `self` onto an existing instance of the owned type.
     fn clone_onto(self, other: &mut Self::Owned);
     /// Borrows an owned instance as oneself.
+    #[must_use]
     fn borrow_as(owned: &'a Self::Owned) -> Self;
 }
 
 impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
     type Owned = T::Owned;
+    #[inline]
     fn into_owned(self) -> Self::Owned {
         self.to_owned()
     }
+    #[inline]
     fn clone_onto(self, other: &mut Self::Owned) {
         <T as ToOwned>::clone_into(self, other)
     }
+    #[inline]
     fn borrow_as(owned: &'a Self::Owned) -> Self {
         owned.borrow()
     }
@@ -236,17 +244,20 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Reserves space to hold `additional` indices.
+    #[inline]
     pub fn reserve(&mut self, additional: usize) {
         self.indices.reserve(additional);
     }
 
     /// Remove all elements while possibly retaining allocations.
+    #[inline]
     pub fn clear(&mut self) {
         self.indices.clear();
         self.region.clear();
     }
 
     /// Reserve space for the items returned by the iterator.
+    #[inline]
     pub fn reserve_items<T>(&mut self, items: impl Iterator<Item = T> + Clone)
     where
         R: ReserveItems<T>,
@@ -255,6 +266,7 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Reserve space for the regions returned by the iterator.
+    #[inline]
     pub fn reserve_regions<'a>(&mut self, regions: impl Iterator<Item = &'a R> + Clone)
     where
         R: 'a,
@@ -263,11 +275,13 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Iterate the items in this stack.
+    #[inline]
     pub fn iter(&self) -> Iter<'_, R> {
         self.into_iter()
     }
 
     /// Heap size, size - capacity
+    #[inline]
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
@@ -617,7 +631,7 @@ mod tests {
             c.clear();
 
             let mut r = R::default();
-            r.push(cc.get(0));
+            let _ = r.push(cc.get(0));
 
             c.reserve_regions(std::iter::once(&r));
 
@@ -800,9 +814,9 @@ mod tests {
         //! What follows is an example of a Cow-like type that can be used to switch between a GAT
         //! and an owned type at runtime.
 
+        use crate::{FlatStack, IntoOwned, Push, Region, StringRegion};
         use std::convert::Infallible;
         use std::fmt::{Debug, Formatter};
-        use crate::{FlatStack, IntoOwned, Push, Region, StringRegion};
 
         #[allow(dead_code)]
         enum GatCow<'a, B, T> {

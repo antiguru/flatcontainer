@@ -267,6 +267,7 @@ where
 {
     type Owned = Vec<R::Owned>;
 
+    #[inline]
     fn into_owned(self) -> Self::Owned {
         self.iter().map(IntoOwned::into_owned).collect()
     }
@@ -633,7 +634,7 @@ mod tests {
         }
 
         r.clear();
-        r.index(idx.unwrap());
+        let _ = r.index(idx.unwrap());
     }
 
     #[test]
@@ -643,10 +644,10 @@ mod tests {
         let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
-            r.push(row);
+            let _ = r.push(row);
         }
         for row in data {
-            r.push(row);
+            let _ = r.push(row);
         }
 
         let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
