@@ -267,16 +267,18 @@ where
 {
     type Owned = Vec<R::Owned>;
 
-    fn into_owned(self) -> Self::Owned {
-        self.iter().map(IntoOwned::into_owned).collect()
+    fn into_owned(&self) -> Self::Owned {
+        self.iter()
+            .map(|item| IntoOwned::into_owned(&item))
+            .collect()
     }
 
-    fn clone_onto(self, other: &mut Self::Owned) {
+    fn clone_onto(&self, other: &mut Self::Owned) {
         let r = std::cmp::min(self.len(), other.len());
         for (item, target) in self.iter().zip(other.iter_mut()) {
             item.clone_onto(target);
         }
-        other.extend(self.iter().skip(r).map(IntoOwned::into_owned));
+        other.extend(self.iter().skip(r).map(|item| IntoOwned::into_owned(&item)));
         other.truncate(self.len());
     }
 

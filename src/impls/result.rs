@@ -95,11 +95,11 @@ where
 {
     type Owned = Result<T::Owned, E::Owned>;
 
-    fn into_owned(self) -> Self::Owned {
-        self.map(T::into_owned).map_err(E::into_owned)
+    fn into_owned(&self) -> Self::Owned {
+        self.as_ref().map(T::into_owned).map_err(E::into_owned)
     }
 
-    fn clone_onto(self, other: &mut Self::Owned) {
+    fn clone_onto(&self, other: &mut Self::Owned) {
         match (self, other) {
             (Ok(item), Ok(target)) => T::clone_onto(item, target),
             (Err(item), Err(target)) => E::clone_onto(item, target),
