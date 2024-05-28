@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -32,9 +32,11 @@ pub struct OptionRegion<R> {
 }
 
 impl<R: Region> Region for OptionRegion<R> {
-    type ReadItem<'a> = Option<R::ReadItem<'a>> where Self: 'a;
+    type Owned = Option<R::Owned>;
+    type ReadItem<'a> = Option<<R as Region>::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -63,15 +65,43 @@ impl<R: Region> Region for OptionRegion<R> {
         self.inner.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.inner.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
     {
         item.map(R::reborrow)
+    }
+}
+
+impl<'a, T> IntoOwned<'a> for Option<T>
+where
+    T: IntoOwned<'a>,
+{
+    type Owned = Option<T::Owned>;
+
+    #[inline]
+    fn into_owned(self) -> Self::Owned {
+        self.map(IntoOwned::into_owned)
+    }
+
+    #[inline]
+    fn clone_onto(self, other: &mut Self::Owned) {
+        match (self, other) {
+            (Some(item), Some(target)) => T::clone_onto(item, target),
+            (Some(item), target) => *target = Some(T::into_owned(item)),
+            (None, target) => *target = None,
+        }
+    }
+
+    #[inline]
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        owned.as_ref().map(T::borrow_as)
     }
 }
 
@@ -99,6 +129,7 @@ impl<'a, T: 'a, TR> ReserveItems<&'a Option<T>> for OptionRegion<TR>
 where
     TR: Region + ReserveItems<&'a T>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Option<T>> + Clone,

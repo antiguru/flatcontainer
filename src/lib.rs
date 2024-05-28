@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 
+use std::borrow::Borrow;
 use std::fmt::{Debug, Formatter};
 
 #[cfg(feature = "serde")]
@@ -40,8 +41,11 @@ impl<T: Copy> Index for T {}
 ///
 /// Implement the [`Push`] trait for all types that can be copied into a region.
 pub trait Region: Default {
+    /// An owned type that can be constructed from a read item.
+    type Owned;
+
     /// The type of the data that one gets out of the container.
-    type ReadItem<'a>
+    type ReadItem<'a>: IntoOwned<'a, Owned = Self::Owned>
     where
         Self: 'a;
 
@@ -56,6 +60,7 @@ pub trait Region: Default {
 
     /// Index into the container. The index must be obtained by
     /// pushing data into the container.
+    #[must_use]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
@@ -71,6 +76,7 @@ pub trait Region: Default {
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 
     /// Converts a read item into one with a narrower lifetime.
+    #[must_use]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a;
@@ -86,6 +92,7 @@ pub trait Containerized {
 pub trait Push<T>: Region {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
+    #[must_use]
     fn push(&mut self, item: T) -> Self::Index;
 }
 
@@ -97,6 +104,41 @@ pub trait ReserveItems<T>: Region {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = T> + Clone;
+}
+
+/// A reference type corresponding to an owned type, supporting conversion in each direction.
+///
+/// This trait can be implemented by a GAT, and enables owned types to be borrowed as a GAT.
+/// This trait is analogous to `ToOwned`, but not as prescriptive. Specifically, it avoids the
+/// requirement that the other trait implement `Borrow`, for which a borrow must result in a
+/// `&'self Borrowed`, which cannot move the lifetime into a GAT borrowed type.
+pub trait IntoOwned<'a> {
+    /// Owned type into which this type can be converted.
+    type Owned;
+    /// Conversion from an instance of this type to the owned type.
+    #[must_use]
+    fn into_owned(self) -> Self::Owned;
+    /// Clones `self` onto an existing instance of the owned type.
+    fn clone_onto(self, other: &mut Self::Owned);
+    /// Borrows an owned instance as oneself.
+    #[must_use]
+    fn borrow_as(owned: &'a Self::Owned) -> Self;
+}
+
+impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
+    type Owned = T::Owned;
+    #[inline]
+    fn into_owned(self) -> Self::Owned {
+        self.to_owned()
+    }
+    #[inline]
+    fn clone_onto(self, other: &mut Self::Owned) {
+        <T as ToOwned>::clone_into(self, other)
+    }
+    #[inline]
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        owned.borrow()
+    }
 }
 
 /// A container for indices into a region.
@@ -202,17 +244,20 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Reserves space to hold `additional` indices.
+    #[inline]
     pub fn reserve(&mut self, additional: usize) {
         self.indices.reserve(additional);
     }
 
     /// Remove all elements while possibly retaining allocations.
+    #[inline]
     pub fn clear(&mut self) {
         self.indices.clear();
         self.region.clear();
     }
 
     /// Reserve space for the items returned by the iterator.
+    #[inline]
     pub fn reserve_items<T>(&mut self, items: impl Iterator<Item = T> + Clone)
     where
         R: ReserveItems<T>,
@@ -221,6 +266,7 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Reserve space for the regions returned by the iterator.
+    #[inline]
     pub fn reserve_regions<'a>(&mut self, regions: impl Iterator<Item = &'a R> + Clone)
     where
         R: 'a,
@@ -229,11 +275,13 @@ impl<R: Region> FlatStack<R> {
     }
 
     /// Iterate the items in this stack.
+    #[inline]
     pub fn iter(&self) -> Iter<'_, R> {
         self.into_iter()
     }
 
     /// Heap size, size - capacity
+    #[inline]
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
@@ -391,14 +439,41 @@ mod tests {
         hobbies: <Vec<String> as Containerized>::Region,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     struct PersonRef<'a> {
         name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
         age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
         hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
     }
 
+    impl<'a> IntoOwned<'a> for PersonRef<'a> {
+        type Owned = Person;
+
+        fn into_owned(self) -> Self::Owned {
+            Person {
+                name: self.name.into_owned(),
+                age: self.age,
+                hobbies: self.hobbies.into_owned(),
+            }
+        }
+
+        fn clone_onto(self, other: &mut Self::Owned) {
+            self.name.clone_onto(&mut other.name);
+            other.age = self.age;
+            self.hobbies.clone_onto(&mut other.hobbies);
+        }
+
+        fn borrow_as(owned: &'a Self::Owned) -> Self {
+            Self {
+                name: IntoOwned::borrow_as(&owned.name),
+                age: owned.age,
+                hobbies: IntoOwned::borrow_as(&owned.hobbies),
+            }
+        }
+    }
+
     impl Region for PersonRegion {
+        type Owned = Person;
         type ReadItem<'a> = PersonRef<'a> where Self: 'a;
         type Index = (
             <<String as Containerized>::Region as Region>::Index,
@@ -556,7 +631,7 @@ mod tests {
             c.clear();
 
             let mut r = R::default();
-            r.push(cc.get(0));
+            let _ = r.push(cc.get(0));
 
             c.reserve_regions(std::iter::once(&r));
 
@@ -696,5 +771,192 @@ mod tests {
         c.copy(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
         c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+    }
+
+    #[test]
+    fn test_owned() {
+        fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
+        where
+            for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
+            for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O> + Eq + Debug,
+        {
+            let item = region.index(index);
+            let owned = item.into_owned();
+            let index2 = region.push(owned);
+            let item = region.index(index);
+            assert_eq!(item, region.index(index2));
+        }
+
+        let mut c = <StringRegion>::default();
+        let index = c.push("abc".to_string());
+        owned_roundtrip::<StringRegion, String>(&mut c, index);
+    }
+
+    /// Test that items and owned variants can be reborrowed to shorten their lifetimes.
+    fn _test_reborrow<R>(item: R::ReadItem<'_>, owned: &R::Owned)
+    where
+        R: Region,
+        for<'a> R::ReadItem<'a>: Eq,
+    {
+        // The following line requires `reborrow` because otherwise owned must outlive '_.
+        // fn _test_reborrow<R>(item: R::ReadItem<'_>, owned: &R::Owned) where R: Region, for<'a> R::ReadItem<'a>: Eq {
+        //                      ----                          - let's call the lifetime of this reference `'1`
+        //                      |
+        //                      has type `<R as Region>::ReadItem<'2>`
+        //     // The following line requires `reborrow` because otherwise owned must outlive '_.
+        //     let _ = item == IntoOwned::borrow_as(owned);
+        //                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^ argument requires that `'1` must outlive `'2`
+        // let _ = item == IntoOwned::borrow_as(owned);
+        let _ = R::reborrow(item) == R::reborrow(IntoOwned::borrow_as(owned));
+    }
+
+    mod cow {
+        //! What follows is an example of a Cow-like type that can be used to switch between a GAT
+        //! and an owned type at runtime.
+
+        use crate::{FlatStack, IntoOwned, Push, Region, StringRegion};
+        use std::convert::Infallible;
+        use std::fmt::{Debug, Formatter};
+
+        #[allow(dead_code)]
+        enum GatCow<'a, B, T> {
+            Borrowed(B),
+            Owned(T),
+            Never(&'a Infallible),
+        }
+
+        impl<'a, B, T> GatCow<'a, B, T>
+        where
+            B: IntoOwned<'a, Owned = T> + Copy,
+        {
+            pub fn to_mut(&mut self) -> &mut T {
+                match self {
+                    Self::Borrowed(borrowed) => {
+                        *self = Self::Owned(borrowed.into_owned());
+                        match *self {
+                            Self::Borrowed(..) => unreachable!(),
+                            Self::Owned(ref mut owned) => owned,
+                            Self::Never(_) => unreachable!(),
+                        }
+                    }
+                    Self::Owned(ref mut owned) => owned,
+                    Self::Never(_) => unreachable!(),
+                }
+            }
+        }
+
+        impl<'a, B, T> IntoOwned<'a> for GatCow<'a, B, T>
+        where
+            B: IntoOwned<'a, Owned = T> + Copy,
+        {
+            type Owned = T;
+
+            fn into_owned(self) -> T {
+                match self {
+                    GatCow::Borrowed(b) => b.into_owned(),
+                    GatCow::Owned(o) => o,
+                    Self::Never(_) => unreachable!(),
+                }
+            }
+
+            fn clone_onto(self, other: &mut T) {
+                match self {
+                    GatCow::Borrowed(b) => b.clone_onto(other),
+                    GatCow::Owned(o) => *other = o,
+                    Self::Never(_) => unreachable!(),
+                }
+            }
+
+            fn borrow_as(owned: &'a T) -> Self {
+                GatCow::Borrowed(IntoOwned::borrow_as(owned))
+            }
+        }
+
+        impl<B, T> Debug for GatCow<'_, B, T>
+        where
+            B: Debug,
+            T: Debug,
+        {
+            fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+                match self {
+                    GatCow::Borrowed(b) => b.fmt(f),
+                    GatCow::Owned(o) => o.fmt(f),
+                    Self::Never(_) => unreachable!(),
+                }
+            }
+        }
+
+        #[derive(Default, Debug, Clone)]
+        struct CowRegion<R>(R);
+
+        impl<R> Region for CowRegion<R>
+        where
+            R: Region,
+            for<'a> R::ReadItem<'a>: Copy,
+        {
+            type Owned = <R as Region>::Owned;
+            type ReadItem<'a> = GatCow<'a, R::ReadItem<'a>, R::Owned> where Self: 'a;
+            type Index = R::Index;
+
+            fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+            where
+                Self: 'a,
+            {
+                Self(R::merge_regions(regions.map(|r| &r.0)))
+            }
+
+            fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+                GatCow::Borrowed(self.0.index(index))
+            }
+
+            fn reserve_regions<'a, I>(&mut self, regions: I)
+            where
+                Self: 'a,
+                I: Iterator<Item = &'a Self> + Clone,
+            {
+                self.0.reserve_regions(regions.map(|r| &r.0))
+            }
+
+            fn clear(&mut self) {
+                self.0.clear()
+            }
+
+            fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+                self.0.heap_size(callback)
+            }
+
+            fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+            where
+                Self: 'a,
+            {
+                match item {
+                    GatCow::Borrowed(b) => GatCow::Borrowed(R::reborrow(b)),
+                    GatCow::Owned(o) => GatCow::Owned(o),
+                    GatCow::Never(_) => unreachable!(),
+                }
+            }
+        }
+
+        impl<R, D> Push<D> for CowRegion<R>
+        where
+            R: Region + Push<D>,
+            for<'a> R::ReadItem<'a>: Copy,
+        {
+            fn push(&mut self, item: D) -> Self::Index {
+                self.0.push(item)
+            }
+        }
+
+        #[test]
+        fn test_gat_cow() {
+            let mut c = <FlatStack<CowRegion<StringRegion>>>::default();
+            c.copy("abc");
+
+            assert_eq!("abc", c.get(0).into_owned());
+            let mut item = c.get(0);
+            item.to_mut().push_str("def");
+            assert_eq!("abcdef", item.into_owned());
+            assert_eq!("abc", c.get(0).into_owned());
+        }
     }
 }

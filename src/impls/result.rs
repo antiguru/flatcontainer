@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
 
 impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
     type Region = ResultRegion<T::Region, E::Region>;
@@ -37,9 +37,11 @@ where
     T: Region,
     E: Region,
 {
+    type Owned = Result<T::Owned, E::Owned>;
     type ReadItem<'a> = Result<T::ReadItem<'a>, E::ReadItem<'a>> where Self: 'a;
     type Index = Result<T::Index, E::Index>;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -74,16 +76,46 @@ where
         self.errs.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         self.oks.heap_size(&mut callback);
         self.errs.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
     {
         item.map(T::reborrow).map_err(E::reborrow)
+    }
+}
+
+impl<'a, T, E> IntoOwned<'a> for Result<T, E>
+where
+    T: IntoOwned<'a>,
+    E: IntoOwned<'a>,
+{
+    type Owned = Result<T::Owned, E::Owned>;
+
+    #[inline]
+    fn into_owned(self) -> Self::Owned {
+        self.map(T::into_owned).map_err(E::into_owned)
+    }
+
+    #[inline]
+    fn clone_onto(self, other: &mut Self::Owned) {
+        match (self, other) {
+            (Ok(item), Ok(target)) => T::clone_onto(item, target),
+            (Err(item), Err(target)) => E::clone_onto(item, target),
+            (Ok(item), target) => *target = Ok(T::into_owned(item)),
+            (Err(item), target) => *target = Err(E::into_owned(item)),
+        }
+    }
+
+    #[inline]
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        owned.as_ref().map(T::borrow_as).map_err(E::borrow_as)
     }
 }
 
@@ -120,6 +152,7 @@ where
     TC: Region + ReserveItems<&'a T>,
     EC: Region + ReserveItems<&'a E>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Result<T, E>> + Clone,

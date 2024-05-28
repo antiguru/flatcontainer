@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -27,10 +27,12 @@ macro_rules! tuple_flatcontainer {
             where
                $(<$name as Region>::Index: crate::Index),*
             {
+                type Owned = ($($name::Owned,)*);
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
 
                 type Index = ($($name::Index,)*);
 
+                #[inline]
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
                     Self: 'a,
@@ -61,10 +63,12 @@ macro_rules! tuple_flatcontainer {
                     $(self.[<container $name>].clear();)*
                 }
 
+                #[inline]
                 fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
                     $(self.[<container $name>].heap_size(&mut callback);)*
                 }
 
+                #[inline]
                 fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b> where Self: 'a {
                     let ($($name,)*) = item;
                     (
@@ -79,6 +83,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Push<$name>),*
             {
+                #[inline]
                 fn push(&mut self, item: ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = item;
@@ -92,6 +97,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Region + Push<&'a $name>),*
             {
+                #[inline]
                 fn push(&mut self, item: &'a ($($name,)*))
                     -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
                     let ($($name,)*) = item;
@@ -101,10 +107,43 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
+            impl<'a, $($name),*> IntoOwned<'a> for ($($name,)*)
+            where
+                $($name: IntoOwned<'a>),*
+            {
+                type Owned = ($($name::Owned,)*);
+
+                #[inline]
+                fn into_owned(self) -> Self::Owned {
+                    let ($($name,)*) = self;
+                    (
+                        $($name.into_owned(),)*
+                    )
+                }
+
+                #[inline]
+                fn clone_onto(self, other: &mut Self::Owned) {
+                    let ($($name,)*) = self;
+                    let ($([<$name _other>],)*) = other;
+                    $($name.clone_onto([<$name _other>]);)*
+                }
+
+                #[inline]
+                fn borrow_as(owned: &'a Self::Owned) -> Self {
+                    let ($($name,)*) = owned;
+                    (
+                        $($name::borrow_as($name),)*
+                    )
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
             impl<'a, $($name, [<$name _C>]),*> ReserveItems<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
                 $([<$name _C>]: Region + ReserveItems<&'a $name>),*
             {
+                #[inline]
                 fn reserve_items<It>(&mut self, items: It)
                 where
                     It: Iterator<Item = &'a ($($name,)*)> + Clone,
@@ -119,6 +158,7 @@ macro_rules! tuple_flatcontainer {
             where
                 $([<$name _C>]: Region + ReserveItems<$name>),*
             {
+                #[inline]
                 fn reserve_items<It>(&mut self, items: It)
                 where
                     It: Iterator<Item = ($($name,)*)> + Clone,

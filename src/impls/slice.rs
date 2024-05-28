@@ -7,7 +7,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Vec<T> {
     type Region = SliceRegion<T::Region>;
@@ -60,9 +60,11 @@ pub struct SliceRegion<C: Region, O: OffsetContainer<C::Index> = Vec<<C as Regio
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
+    type Owned = Vec<C::Owned>;
     type ReadItem<'a> = ReadSlice<'a, C, O> where Self: 'a;
     type Index = (usize, usize);
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -75,11 +77,11 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
 
     #[inline]
     fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
-        ReadSlice {
+        ReadSlice(Ok(ReadSliceInner {
             region: self,
             start,
             end,
-        }
+        }))
     }
 
     #[inline]
@@ -99,11 +101,13 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
         self.inner.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         self.slices.heap_size(&mut callback);
         self.inner.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -113,6 +117,7 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {
+    #[inline]
     fn default() -> Self {
         Self {
             slices: O::default(),
@@ -122,13 +127,57 @@ impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {
 }
 
 /// A helper to read data out of a slice region.
-pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
+pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>>(
+    Result<ReadSliceInner<'a, C, O>, &'a [C::Owned]>,
+);
+
+struct ReadSliceInner<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
     region: &'a SliceRegion<C, O>,
     start: usize,
     end: usize,
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
+    /// Read the n-th item from the underlying region.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the index is out of bounds, i.e., it is larger than the
+    /// length of this slice representation.
+    #[inline]
+    #[must_use]
+    pub fn get(&self, index: usize) -> C::ReadItem<'_> {
+        match &self.0 {
+            Ok(inner) => inner.get(index),
+            Err(slice) => IntoOwned::borrow_as(&slice[index]),
+        }
+    }
+
+    /// The number of elements in this slice.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match self.0 {
+            Ok(inner) => inner.len(),
+            Err(slice) => slice.len(),
+        }
+    }
+
+    /// Returns `true` if the slice is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match self.0 {
+            Ok(inner) => inner.is_empty(),
+            Err(slice) => slice.is_empty(),
+        }
+    }
+
+    /// Returns an iterator over all contained items.
+    #[must_use]
+    pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
+        self.into_iter()
+    }
+}
+impl<C: Region, O: OffsetContainer<C::Index>> ReadSliceInner<'_, C, O> {
     /// Read the n-th item from the underlying region.
     ///
     /// # Panics
@@ -161,12 +210,6 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     pub fn is_empty(&self) -> bool {
         self.start == self.end
     }
-
-    /// Returns an iterator over all contained items.
-    #[must_use]
-    pub fn iter(&self) -> <Self as IntoIterator>::IntoIter {
-        self.into_iter()
-    }
 }
 
 impl<C: Region, O: OffsetContainer<C::Index>> Debug for ReadSlice<'_, C, O>
@@ -185,31 +228,99 @@ impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
     }
 }
 
+impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceInner<'_, C, O> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
+impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSliceInner<'_, C, O> {}
+
+impl<'a, C, O> IntoOwned<'a> for ReadSlice<'a, C, O>
+where
+    C: Region,
+    O: OffsetContainer<C::Index>,
+{
+    type Owned = Vec<C::Owned>;
+
+    #[inline]
+    fn into_owned(self) -> Self::Owned {
+        self.iter().map(IntoOwned::into_owned).collect()
+    }
+
+    #[inline]
+    fn clone_onto(self, other: &mut Self::Owned) {
+        let r = std::cmp::min(self.len(), other.len());
+        for (item, target) in self.iter().zip(other.iter_mut()) {
+            item.clone_onto(target);
+        }
+        other.extend(self.iter().skip(r).map(IntoOwned::into_owned));
+        other.truncate(self.len());
+    }
+
+    #[inline]
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        Self(Err(owned.as_slice()))
+    }
+}
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
     type Item = C::ReadItem<'a>;
     type IntoIter = ReadSliceIter<'a, C, O>;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
-        ReadSliceIter(self.region, self.start..self.end)
+        match self.0 {
+            Ok(inner) => {
+                ReadSliceIter(Ok(ReadSliceIterInner(inner.region, inner.start..inner.end)))
+            }
+            Err(slice) => ReadSliceIter(Err(slice.iter())),
+        }
     }
 }
 
 /// An iterator over the items read from a slice region.
 #[derive(Debug)]
 pub struct ReadSliceIter<'a, C: Region, O: OffsetContainer<C::Index>>(
+    Result<ReadSliceIterInner<'a, C, O>, std::slice::Iter<'a, C::Owned>>,
+);
+
+impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceIter<'a, C, O> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+/// An iterator over the items read from a slice region.
+#[derive(Debug)]
+pub struct ReadSliceIterInner<'a, C: Region, O: OffsetContainer<C::Index>>(
     &'a SliceRegion<C, O>,
     Range<usize>,
 );
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceIter<'a, C, O> {
+impl<'a, C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceIterInner<'a, C, O> {
+    #[inline]
     fn clone(&self) -> Self {
         Self(self.0, self.1.clone())
     }
 }
 
 impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIter<'a, C, O> {
+    type Item = C::ReadItem<'a>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.0 {
+            Ok(inner) => inner.next(),
+            Err(iter) => iter.next().map(IntoOwned::borrow_as),
+        }
+    }
+}
+
+impl<'a, C: Region, O: OffsetContainer<C::Index>> Iterator for ReadSliceIterInner<'a, C, O> {
     type Item = C::ReadItem<'a>;
 
     #[inline]
@@ -238,6 +349,7 @@ where
     R: Region + ReserveItems<&'a T>,
     O: OffsetContainer<R::Index>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a [T]> + Clone,
@@ -288,6 +400,7 @@ where
     for<'b> R: Region + ReserveItems<&'b T>,
     O: OffsetContainer<R::Index>,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Vec<T>> + Clone,
@@ -303,7 +416,28 @@ where
 {
     #[inline]
     fn push(&mut self, item: ReadSlice<'a, C, O>) -> <SliceRegion<C, O> as Region>::Index {
-        let ReadSlice { region, start, end } = item;
+        match item.0 {
+            Ok(inner) => self.push(inner),
+            Err(slice) => {
+                let start_len = self.slices.len();
+                for item in slice.iter().map(IntoOwned::borrow_as) {
+                    let index = self.inner.push(item);
+                    self.slices.push(index);
+                }
+                (start_len, self.slices.len())
+            }
+        }
+    }
+}
+
+impl<'a, C, O> Push<ReadSliceInner<'a, C, O>> for SliceRegion<C, O>
+where
+    C: Region + Push<<C as Region>::ReadItem<'a>>,
+    O: OffsetContainer<C::Index>,
+{
+    #[inline]
+    fn push(&mut self, item: ReadSliceInner<'a, C, O>) -> <SliceRegion<C, O> as Region>::Index {
+        let ReadSliceInner { region, start, end } = item;
         let start_len = self.slices.len();
         for index in start..end {
             let index = region.slices.index(index);

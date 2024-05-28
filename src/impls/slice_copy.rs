@@ -33,10 +33,15 @@ pub struct OwnedRegion<T> {
     slices: Vec<T>,
 }
 
-impl<T> Region for OwnedRegion<T> {
+impl<T> Region for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
+    type Owned = <[T] as ToOwned>::Owned;
     type ReadItem<'a> = &'a [T] where Self: 'a;
     type Index = (usize, usize);
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -51,6 +56,7 @@ impl<T> Region for OwnedRegion<T> {
         &self.slices[start..end]
     }
 
+    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -64,6 +70,7 @@ impl<T> Region for OwnedRegion<T> {
         self.slices.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
         let size_of_t = std::mem::size_of::<T>();
         callback(
@@ -72,6 +79,7 @@ impl<T> Region for OwnedRegion<T> {
         );
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -81,6 +89,7 @@ impl<T> Region for OwnedRegion<T> {
 }
 
 impl<T> Default for OwnedRegion<T> {
+    #[inline]
     fn default() -> Self {
         Self {
             slices: Vec::default(),
@@ -88,7 +97,10 @@ impl<T> Default for OwnedRegion<T> {
     }
 }
 
-impl<T, const N: usize> Push<[T; N]> for OwnedRegion<T> {
+impl<T, const N: usize> Push<[T; N]> for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
     #[inline]
     fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
@@ -114,6 +126,7 @@ impl<T: Clone, const N: usize> Push<&&[T; N]> for OwnedRegion<T> {
 }
 
 impl<'b, T: Clone, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T> {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b [T; N]> + Clone,
@@ -141,7 +154,11 @@ where
     }
 }
 
-impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T> {
+impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b [T]> + Clone,
@@ -150,7 +167,10 @@ impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T> {
     }
 }
 
-impl<T> Push<Vec<T>> for OwnedRegion<T> {
+impl<T> Push<Vec<T>> for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
     #[inline]
     fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
@@ -166,7 +186,11 @@ impl<T: Clone> Push<&Vec<T>> for OwnedRegion<T> {
     }
 }
 
-impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T> {
+impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'a Vec<T>> + Clone,
@@ -184,7 +208,11 @@ impl<T: Clone, I: IntoIterator<Item = T>> Push<CopyIter<I>> for OwnedRegion<T> {
     }
 }
 
-impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T> {
+impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = CopyIter<J>> + Clone,

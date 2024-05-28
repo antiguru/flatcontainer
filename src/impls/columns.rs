@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::OffsetOptimized;
-use crate::CopyIter;
+use crate::{CopyIter, IntoOwned};
 use crate::{OwnedRegion, Push, Region};
 
 /// A region that can store a variable number of elements per row.
@@ -71,6 +71,7 @@ impl<R> Region for ColumnsRegion<R>
 where
     R: Region,
 {
+    type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
     type Index = usize;
 
@@ -94,10 +95,10 @@ where
     }
 
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        ReadColumns {
+        ReadColumns(Ok(ReadColumnsInner {
             columns: &self.inner,
             index: self.indices.index(index),
-        }
+        }))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -155,7 +156,11 @@ where
 }
 
 /// Read the values of a row.
-pub struct ReadColumns<'a, R>
+pub struct ReadColumns<'a, R>(Result<ReadColumnsInner<'a, R>, &'a [R::Owned]>)
+where
+    R: Region;
+
+struct ReadColumnsInner<'a, R>
 where
     R: Region,
 {
@@ -174,7 +179,17 @@ where
     }
 }
 
+impl<'a, R> Clone for ReadColumnsInner<'a, R>
+where
+    R: Region,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
 impl<'a, R> Copy for ReadColumns<'a, R> where R: Region {}
+impl<'a, R> Copy for ReadColumnsInner<'a, R> where R: Region {}
 
 impl<'a, R> Debug for ReadColumns<'a, R>
 where
@@ -199,6 +214,37 @@ where
     /// Get the element at `offset`.
     #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
+        match &self.0 {
+            Ok(inner) => inner.get(offset),
+            Err(slice) => IntoOwned::borrow_as(&slice[offset]),
+        }
+    }
+
+    /// Returns the length of this row.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        match &self.0 {
+            Ok(inner) => inner.len(),
+            Err(slice) => slice.len(),
+        }
+    }
+
+    /// Returns `true` if this row is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        match &self.0 {
+            Ok(inner) => inner.is_empty(),
+            Err(slice) => slice.is_empty(),
+        }
+    }
+}
+impl<'a, R> ReadColumnsInner<'a, R>
+where
+    R: Region,
+{
+    /// Get the element at `offset`.
+    #[must_use]
+    pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
         self.columns[offset].index(self.index[offset])
     }
 
@@ -215,6 +261,31 @@ where
     }
 }
 
+impl<'a, R> IntoOwned<'a> for ReadColumns<'a, R>
+where
+    R: Region,
+{
+    type Owned = Vec<R::Owned>;
+
+    #[inline]
+    fn into_owned(self) -> Self::Owned {
+        self.iter().map(IntoOwned::into_owned).collect()
+    }
+
+    fn clone_onto(self, other: &mut Self::Owned) {
+        let r = std::cmp::min(self.len(), other.len());
+        for (item, target) in self.iter().zip(other.iter_mut()) {
+            item.clone_onto(target);
+        }
+        other.extend(self.iter().skip(r).map(IntoOwned::into_owned));
+        other.truncate(self.len());
+    }
+
+    fn borrow_as(owned: &'a Self::Owned) -> Self {
+        Self(Err(owned.as_slice()))
+    }
+}
+
 impl<'a, R> IntoIterator for &ReadColumns<'a, R>
 where
     R: Region,
@@ -223,18 +294,40 @@ where
     type IntoIter = ReadColumnsIter<'a, R>;
 
     fn into_iter(self) -> Self::IntoIter {
-        ReadColumnsIter {
-            iter: self.index.iter().zip(self.columns.iter()),
+        match self.0 {
+            Ok(inner) => ReadColumnsIter(Ok(ReadColumnsIterInner {
+                iter: inner.index.iter().zip(inner.columns.iter()),
+            })),
+            Err(slice) => ReadColumnsIter(Err(slice.iter())),
         }
     }
 }
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIter<'a, R: Region> {
+pub struct ReadColumnsIter<'a, R: Region>(
+    Result<ReadColumnsIterInner<'a, R>, std::slice::Iter<'a, R::Owned>>,
+);
+
+/// An iterator over the elements of a row.
+pub struct ReadColumnsIterInner<'a, R: Region> {
     iter: std::iter::Zip<std::slice::Iter<'a, R::Index>, std::slice::Iter<'a, R>>,
 }
 
 impl<'a, R> Iterator for ReadColumnsIter<'a, R>
+where
+    R: Region,
+{
+    type Item = R::ReadItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &mut self.0 {
+            Ok(inner) => inner.next(),
+            Err(slice) => slice.next().map(IntoOwned::borrow_as),
+        }
+    }
+}
+
+impl<'a, R> Iterator for ReadColumnsIterInner<'a, R>
 where
     R: Region,
 {
@@ -541,7 +634,7 @@ mod tests {
         }
 
         r.clear();
-        r.index(idx.unwrap());
+        let _ = r.index(idx.unwrap());
     }
 
     #[test]
@@ -551,10 +644,10 @@ mod tests {
         let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
 
         for row in &data {
-            r.push(row);
+            let _ = r.push(row);
         }
         for row in data {
-            r.push(row);
+            let _ = r.push(row);
         }
 
         let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();

@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Index, Push, Region, ReserveItems};
+use crate::{Containerized, Index, IntoOwned, Push, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -40,10 +40,15 @@ impl<T> Debug for MirrorRegion<T> {
     }
 }
 
-impl<T: Index> Region for MirrorRegion<T> {
+impl<T> Region for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
+    type Owned = T;
     type ReadItem<'a> = T where T: 'a;
     type Index = T;
 
+    #[inline]
     fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -70,10 +75,12 @@ impl<T: Index> Region for MirrorRegion<T> {
         // No storage
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
         // No storage
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -82,28 +89,40 @@ impl<T: Index> Region for MirrorRegion<T> {
     }
 }
 
-impl<T: Index> Push<T> for MirrorRegion<T> {
+impl<T> Push<T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
     #[inline(always)]
     fn push(&mut self, item: T) -> T {
         item
     }
 }
 
-impl<T: Index> Push<&T> for MirrorRegion<T> {
+impl<T> Push<&T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
     #[inline(always)]
     fn push(&mut self, item: &T) -> T {
         *item
     }
 }
 
-impl<T: Index> Push<&&T> for MirrorRegion<T> {
+impl<T> Push<&&T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
     #[inline(always)]
     fn push(&mut self, item: &&T) -> T {
         **item
     }
 }
 
-impl<T: Index> ReserveItems<T> for MirrorRegion<T> {
+impl<T> ReserveItems<T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
     #[inline(always)]
     fn reserve_items<I>(&mut self, _items: I)
     where
@@ -113,7 +132,10 @@ impl<T: Index> ReserveItems<T> for MirrorRegion<T> {
     }
 }
 
-impl<'a, T: Index> ReserveItems<&'a T> for MirrorRegion<T> {
+impl<'a, T> ReserveItems<&'a T> for MirrorRegion<T>
+where
+    for<'b> T: Index + IntoOwned<'b, Owned = T>,
+{
     #[inline(always)]
     fn reserve_items<I>(&mut self, _items: I)
     where
@@ -127,6 +149,25 @@ macro_rules! implement_for {
     ($index_type:ty) => {
         impl Containerized for $index_type {
             type Region = MirrorRegion<Self>;
+        }
+
+        impl<'a> IntoOwned<'a> for $index_type {
+            type Owned = $index_type;
+
+            #[inline]
+            fn into_owned(self) -> Self::Owned {
+                self
+            }
+
+            #[inline]
+            fn clone_onto(self, other: &mut Self::Owned) {
+                *other = self;
+            }
+
+            #[inline]
+            fn borrow_as(owned: &'a Self::Owned) -> Self {
+                *owned
+            }
         }
     };
 }

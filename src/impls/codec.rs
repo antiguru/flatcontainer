@@ -72,6 +72,7 @@ impl<C: Codec, R> Region for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
+    type Owned = Vec<u8>;
     type ReadItem<'a> = &'a [u8]
     where
         Self: 'a;
@@ -421,8 +422,8 @@ mod tests {
         }
         for _ in 0..1000 {
             for r in &mut regions {
-                r.push("abcdef".as_bytes());
-                r.push("defghi".as_bytes());
+                let _ = r.push("abcdef".as_bytes());
+                let _ = r.push("defghi".as_bytes());
             }
         }
 
@@ -447,8 +448,8 @@ mod tests {
         }
         for _ in 0..1000 {
             for r in &mut regions {
-                r.push("abcdef".as_bytes());
-                r.push("defghi".as_bytes());
+                let _ = r.push("abcdef".as_bytes());
+                let _ = r.push("defghi".as_bytes());
             }
         }
 

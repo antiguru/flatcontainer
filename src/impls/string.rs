@@ -43,9 +43,11 @@ impl<R> Region for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
+    type Owned = String;
     type ReadItem<'a> = &'a str where Self: 'a ;
     type Index = R::Index;
 
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -61,6 +63,7 @@ where
         unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
     }
 
+    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -74,10 +77,12 @@ where
         self.inner.clear();
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.inner.heap_size(callback);
     }
 
+    #[inline]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -118,6 +123,7 @@ impl<'b, R> ReserveItems<&'b String> for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
 {
+    #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = &'b String> + Clone,
@@ -174,7 +180,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{Push, Region, ReserveItems, StringRegion};
+    use crate::{IntoOwned, Push, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
@@ -226,5 +232,16 @@ mod tests {
 
         assert!(cap > 0);
         assert!(cnt > 0);
+    }
+
+    #[test]
+    fn owned() {
+        let mut r = <StringRegion>::default();
+
+        let idx = r.push("abc");
+        let reference = r.index(idx);
+        let owned = reference.into_owned();
+        let idx = r.push(owned);
+        assert_eq!("abc", r.index(idx));
     }
 }
