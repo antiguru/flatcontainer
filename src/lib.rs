@@ -7,6 +7,7 @@ use std::fmt::{Debug, Formatter};
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+pub mod flatten;
 pub mod impls;
 
 pub use impls::columns::ColumnsRegion;

@@ -32,10 +32,7 @@ use crate::{Containerized, Push, Region, ReserveItems};
 /// ```
 #[derive(Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct StringRegion<R = OwnedRegion<u8>>
-where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
-{
+pub struct StringRegion<R = OwnedRegion<u8>> {
     inner: R,
 }
 
@@ -88,6 +85,31 @@ where
         Self: 'a,
     {
         item
+    }
+}
+
+mod flatten {
+    use crate::flatten::{Bytes, FlatWrite, Flatten};
+    use crate::{Region, StringRegion};
+
+    impl<R> Flatten for StringRegion<R>
+    where
+        // for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
+        // for<'a, 'b> R::Flat<'a>: ReadRegion<ReadItem<'b> = &'b [u8]> + 'b,
+        for<'a> R: Flatten + Region<ReadItem<'a> = &'a [u8]> + 'a,
+    {
+        type Flat<S> = StringRegion<R::Flat<S>>;
+
+        fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
+            self.inner.entomb(write)
+        }
+
+        fn exhume<'a, S>(buffer: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
+        where
+            S: std::ops::Deref<Target = [u8]> + Clone,
+        {
+            R::exhume(buffer).map(|inner| StringRegion { inner })
+        }
     }
 }
 
