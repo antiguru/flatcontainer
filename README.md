@@ -12,12 +12,11 @@ flatcontainer = "0.4"
 
 ```rust
 use flatcontainer::FlatStack;
-fn main() {
-  let r: Result<_, u16> = Ok("abc");
-  let mut c = FlatStack::default_impl::<Result<&str, u16>>();
-  c.copy(&r);
-  assert_eq!(r, c.get(0));
-}
+
+let r: Result<_, u16> = Ok("abc");
+let mut c = FlatStack::default_impl::<Result<&str, u16>>();
+c.copy(&r);
+assert_eq!(r, c.get(0));
 ```
 
 ## Details
