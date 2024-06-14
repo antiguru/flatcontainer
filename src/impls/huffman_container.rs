@@ -11,7 +11,8 @@ use self::wrapper::Wrapped;
 /// A container that contains slices `[B]` as items.
 pub struct HuffmanContainer<B: Ord + Clone> {
     /// Either encoded data or raw data.
-    inner: Result<(Huffman<B>, Vec<u8>), Vec<B>>,
+    /// Encoded data is a map, a list of bytes, and a number of valid *bits*.
+    inner: Result<(Huffman<B>, Vec<u8>, usize), Vec<B>>,
     /// Counts of the number of each pattern we've seen.
     stats: BTreeMap<B, i64>,
 }
@@ -22,10 +23,10 @@ where
 {
     /// Prints statistics about encoded containers.
     pub fn print(&self) {
-        if let Ok((_huff, bytes)) = &self.inner {
+        if let Ok((_huff, _bytes, bits)) = &self.inner {
             println!(
-                "Bytes: {:?}, Symbols: {:?}",
-                bytes.len(),
+                "Bits: {:?}, Symbols: {:?}",
+                bits,
                 self.stats.values().sum::<i64>()
             );
         }
@@ -56,7 +57,7 @@ where
 
         let bytes = Vec::with_capacity(counts.values().cloned().sum::<i64>() as usize);
         let huffman = Huffman::create_from(counts);
-        let inner = Ok((huffman, bytes));
+        let inner = Ok((huffman, bytes, 0));
 
         Self {
             inner,
@@ -66,7 +67,9 @@ where
 
     fn index(&self, (lower, upper): Self::Index) -> Self::ReadItem<'_> {
         match &self.inner {
-            Ok((huffman, bytes)) => Wrapped::encoded(Encoded::new(huffman, &bytes[lower..upper])),
+            Ok((huffman, bytes, _bits)) => {
+                Wrapped::encoded(Encoded::new(huffman, &bytes, (lower, upper)))
+            }
             Err(raw) => Wrapped::decoded(&raw[lower..upper]),
         }
     }
@@ -99,6 +102,45 @@ where
     }
 }
 
+/// Re-used function to push encoded symbols into a byte vector.
+///
+/// Used in multiple `Push` implementations.
+fn push_symbols<'a, I, B>(
+    huffman: &'a Huffman<B>,
+    bytes: &mut Vec<u8>,
+    bits: &mut usize,
+    iter: I,
+) -> (usize, usize)
+where
+    B: Ord + 'a,
+    I: Iterator<Item = &'a B>,
+{
+    // let start = 8 * bytes.len(); // starting *bit*.
+    // *bits = start;
+    let start = *bits;
+    *bits = *bits - (*bits % 8);
+    let initially = if start % 8 == 0 {
+        (0, 0)
+    } else {
+        let bits = start % 8;
+        let byte = bytes.pop().unwrap() >> (8 - bits);
+        (byte, bits)
+    };
+    for byte in huffman.encode(initially, iter) {
+        match byte {
+            Ok(byte) => {
+                bytes.push(byte);
+                *bits += 8;
+            }
+            Err((byte, bs)) => {
+                bytes.push(byte);
+                *bits += bs;
+            }
+        }
+    }
+    (start, *bits)
+}
+
 impl<B> Push<&[B]> for HuffmanContainer<B>
 where
     B: Ord + Clone + Sized + 'static,
@@ -108,11 +150,7 @@ where
             *self.stats.entry(x.clone()).or_insert(0) += 1;
         }
         match &mut self.inner {
-            Ok((huffman, bytes)) => {
-                let start = bytes.len();
-                bytes.extend(huffman.encode(item.iter()));
-                (start, bytes.len())
-            }
+            Ok((huffman, bytes, bits)) => push_symbols(huffman, bytes, bits, item.iter()),
             Err(raw) => {
                 let start = raw.len();
                 raw.extend_from_slice(item);
@@ -176,20 +214,16 @@ where
             }
         }
         match (item.decode(), &mut self.inner) {
-            (Ok(decoded), Ok((huffman, bytes))) => {
-                let start = bytes.len();
-                bytes.extend(huffman.encode(decoded));
-                (start, bytes.len())
+            (Ok(decoded), Ok((huffman, bytes, bits))) => {
+                push_symbols(huffman, bytes, bits, decoded)
             }
             (Ok(decoded), Err(raw)) => {
                 let start = raw.len();
                 raw.extend(decoded.cloned());
                 (start, raw.len())
             }
-            (Err(symbols), Ok((huffman, bytes))) => {
-                let start = bytes.len();
-                bytes.extend(huffman.encode(symbols.iter()));
-                (start, bytes.len())
+            (Err(symbols), Ok((huffman, bytes, bits))) => {
+                push_symbols(huffman, bytes, bits, symbols.iter())
             }
             (Err(symbols), Err(raw)) => {
                 let start = raw.len();
@@ -325,15 +359,28 @@ mod encoded {
         huffman: &'a Huffman<B>,
         /// The data itself.
         bytes: &'a [u8],
+        /// Bit addressed range, start and end, of valid bits.
+        ///
+        /// This has the potential to include a partial byte at the start, at the end,
+        /// and potentially be less than a byte in total for that matter.
+        bit_range: (usize, usize),
     }
 
     impl<'a, B: Ord> Encoded<'a, B> {
         /// Returns either a decoding iterator, or just the bytes themselves.
         pub fn decode(&'a self) -> impl Iterator<Item = &'a B> + 'a {
-            self.huffman.decode(self.bytes.iter().cloned())
+            let iter = BitIterator {
+                bytes: self.bytes,
+                bit_range: self.bit_range,
+            };
+            self.huffman.decode(iter)
         }
-        pub fn new(huffman: &'a Huffman<B>, bytes: &'a [u8]) -> Self {
-            Self { huffman, bytes }
+        pub fn new(huffman: &'a Huffman<B>, bytes: &'a [u8], bit_range: (usize, usize)) -> Self {
+            Self {
+                huffman,
+                bytes,
+                bit_range,
+            }
         }
     }
 
@@ -341,6 +388,46 @@ mod encoded {
     impl<'a, B: Ord> Clone for Encoded<'a, B> {
         fn clone(&self) -> Self {
             *self
+        }
+    }
+
+    /// An iterator over bits in a byte slice.
+    ///
+    /// The iterator returns a byte at a time and the number of bits in that byte.
+    /// This can often be a whole valid byte at a time, but the first and last bytes
+    /// may only contain partial information.
+    struct BitIterator<'a> {
+        /// Byte storage within which the addressed bits live.
+        bytes: &'a [u8],
+        /// Bit addressed range, start and end, of valid bits.
+        ///
+        /// This has the potential to include a partial byte at the start, at the end,
+        /// and potentially be less than a byte in total for that matter.
+        bit_range: (usize, usize),
+    }
+
+    impl<'a> Iterator for BitIterator<'a> {
+        type Item = (u8, usize);
+        fn next(&mut self) -> Option<Self::Item> {
+            // If bits remain to consume ...
+            if self.bit_range.0 < self.bit_range.1 {
+                // We will certainly pull the byte from `self.bytes[self.bit_range.0 / 8]`.
+                let byte = self.bytes[self.bit_range.0 / 8];
+                // The number of bits we will pull depends on the start and end of the range.
+                // We can't pull more bits than our range allows, nor more bits than are in the byte.
+                let bits = std::cmp::min(
+                    self.bit_range.1 - self.bit_range.0,
+                    8 - self.bit_range.0 % 8,
+                );
+                // Now we need to clean up the byte, shifting and masking it.
+                // This shift depends on the start of the range and the valid bits.
+                let byte = (byte >> (8 - self.bit_range.0 % 8 - bits)) & ((1 << bits) - 1);
+                // Advance our cursor to reflect the bits we have consumed.
+                self.bit_range.0 += bits;
+                Some((byte, bits))
+            } else {
+                None
+            }
         }
     }
 }
@@ -367,17 +454,21 @@ mod huffman {
         ///
         /// The last byte may only contain partial information, but it should be recorded as presented,
         /// as we haven't a way to distinguish (e.g. a `Result` return type).
-        pub fn encode<'a, I>(&'a self, symbols: I) -> Encoder<'a, T, I::IntoIter>
+        pub fn encode<'a, I>(
+            &'a self,
+            initially: (u8, usize),
+            symbols: I,
+        ) -> Encoder<'a, T, I::IntoIter>
         where
             I: IntoIterator<Item = &'a T>,
         {
-            Encoder::new(&self.encode, symbols.into_iter())
+            Encoder::new(&self.encode, initially, symbols.into_iter())
         }
 
         /// Decodes the provided bytes as a sequence of symbols.
         pub fn decode<I>(&self, bytes: I) -> Decoder<'_, T, I::IntoIter>
         where
-            I: IntoIterator<Item = u8>,
+            I: IntoIterator<Item = (u8, usize)>,
         {
             Decoder::new(&self.decode, bytes.into_iter())
         }
@@ -521,20 +612,25 @@ mod huffman {
             pending_bits: usize,
         }
 
-        impl<'a, T, I> Decoder<'a, T, I> {
-            pub fn new(decode: &'a [Decode<T>; 256], bytes: I) -> Self {
+        impl<'a, T, I> Decoder<'a, T, I>
+        where
+            I: Iterator<Item = (u8, usize)>,
+        {
+            pub fn new(decode: &'a [Decode<T>; 256], mut bytes: I) -> Self {
+                // Read an initial potentially partial byte to start the process.
+                let (pending_byte, pending_bits) = bytes.next().unwrap_or((0, 0));
                 Self {
                     decode,
                     bytes,
-                    pending_byte: 0,
-                    pending_bits: 0,
+                    pending_byte: pending_byte.into(),
+                    pending_bits,
                 }
             }
         }
 
         impl<'a, T, I> Iterator for Decoder<'a, T, I>
         where
-            I: Iterator<Item = u8>,
+            I: Iterator<Item = (u8, usize)>,
         {
             type Item = &'a T;
             fn next(&mut self) -> Option<&'a T> {
@@ -543,11 +639,41 @@ mod huffman {
                 let mut map = self.decode;
                 loop {
                     if self.pending_bits < 8 {
-                        if let Some(next_byte) = self.bytes.next() {
-                            self.pending_byte = (self.pending_byte << 8) + next_byte as u16;
-                            self.pending_bits += 8;
-                        } else {
-                            return None;
+                        // We only attempt to read from `self.bytes` once, which should work fine as long
+                        // as we only have one partial byte at the end, as we are done anyhow in that case.
+                        // It means that we *must* read the initial byte when constructing the iterator, to
+                        // avoid a partial byte in the first read.
+                        if let Some((next_byte, next_bits)) = self.bytes.next() {
+                            self.pending_byte = (self.pending_byte << next_bits) + next_byte as u16;
+                            self.pending_bits += next_bits;
+                        }
+                    }
+
+                    if self.pending_bits < 8 {
+                        // We have run out of bytes. We may yet be able to decode the remaining bits.
+                        // Promote the valid bits and consult the map; if it only consumes valid bits,
+                        // we are able to ship the result and advance. If it consumes more bits than
+                        // we have, the data are mysteriously invalid.
+                        let byte = (self.pending_byte << (8 - self.pending_bits)) as usize;
+                        match &map[byte] {
+                            Decode::Void => {
+                                panic!("invalid decoding map");
+                            }
+                            Decode::Further(_) => {
+                                panic!("malformed data: decode incomplete (Further)");
+                                return None;
+                            }
+                            Decode::Symbol(s, bits) => {
+                                if bits <= &self.pending_bits {
+                                    self.pending_bits -= bits;
+                                    self.pending_byte &= (1 << self.pending_bits) - 1;
+                                    return Some(s);
+                                } else if self.pending_bits == 0 {
+                                    return None;
+                                } else {
+                                    panic!("malformed data: decode incomplete (Symbol)");
+                                }
+                            }
                         }
                     }
                     let byte = (self.pending_byte >> (self.pending_bits - 8)) as usize;
@@ -585,12 +711,16 @@ mod huffman {
         }
 
         impl<'a, T, I> Encoder<'a, T, I> {
-            pub fn new(encode: &'a BTreeMap<T, (usize, u64)>, symbols: I) -> Self {
+            pub fn new(
+                encode: &'a BTreeMap<T, (usize, u64)>,
+                initially: (u8, usize),
+                symbols: I,
+            ) -> Self {
                 Self {
                     encode,
                     symbols,
-                    pending_byte: 0,
-                    pending_bits: 0,
+                    pending_byte: initially.0 as u64,
+                    pending_bits: initially.1,
                 }
             }
         }
@@ -599,8 +729,8 @@ mod huffman {
         where
             I: Iterator<Item = &'a T>,
         {
-            type Item = u8;
-            fn next(&mut self) -> Option<u8> {
+            type Item = Result<u8, (u8, usize)>;
+            fn next(&mut self) -> Option<Result<u8, (u8, usize)>> {
                 // We repeatedly ship bytes out of `self.pending_byte`, restocking from `self.symbols`.
                 while self.pending_bits < 8 {
                     if let Some(symbol) = self.symbols.next() {
@@ -611,10 +741,11 @@ mod huffman {
                     } else {
                         // We have run out of symbols. Perhaps there is a final fractional byte to ship?
                         if self.pending_bits > 0 {
+                            let bits = self.pending_bits;
                             let byte = self.pending_byte << (8 - self.pending_bits);
                             self.pending_bits = 0;
                             self.pending_byte = 0;
-                            return Some(byte as u8);
+                            return Some(Err((byte as u8, bits)));
                         } else {
                             return None;
                         }
@@ -624,7 +755,7 @@ mod huffman {
                 let byte = self.pending_byte >> (self.pending_bits - 8);
                 self.pending_bits -= 8;
                 self.pending_byte &= (1 << self.pending_bits) - 1;
-                Some(byte as u8)
+                Some(Ok(byte as u8))
             }
         }
     }
