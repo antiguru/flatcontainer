@@ -1,15 +1,20 @@
 //! Flat representation of regions.
 
-use crate::Region;
+use crate::{FlatStack, Iter, Region};
 use std::marker::PhantomData;
 use std::ops::Deref;
 
 /// TODO
 pub trait FlatWrite {
     /// TODO
-    fn write_lengthened<T: Copy + 'static>(&mut self, data: &[T]) -> std::io::Result<()>;
+    fn write_lengthened<T>(&mut self, data: &[T]) -> std::io::Result<()>;
     /// TODO
-    fn write_unit<T: Copy + 'static>(&mut self, unit: &T) -> std::io::Result<()>;
+    fn write_unit<T>(&mut self, unit: &T) -> std::io::Result<()>;
+
+    /// TODO
+    fn lengthened_size<T>(data: &[T], offset: &mut usize);
+    /// TODO
+    fn unit_size<T>(unit: &T, offset: &mut usize);
 }
 
 /// TODO
@@ -42,6 +47,10 @@ impl<W: std::io::Write> DefaultFlatWrite<W> {
         Ok(())
     }
 
+    fn pad_size<T>(offset: &mut usize) {
+        *offset += (*offset as *const u8).align_offset(std::mem::align_of::<T>());
+    }
+
     /// TODO
     pub fn finish(mut self) -> std::io::Result<()> {
         let alignment: u8 = self
@@ -52,10 +61,15 @@ impl<W: std::io::Write> DefaultFlatWrite<W> {
             .unwrap();
         self.write_unit(&alignment)
     }
+
+    /// TODO
+    pub fn finish_size(offset: &mut usize) {
+        Self::unit_size(&0u8, offset);
+    }
 }
 
 impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
-    fn write_lengthened<T: Copy + 'static>(&mut self, data: &[T]) -> std::io::Result<()> {
+    fn write_lengthened<T>(&mut self, data: &[T]) -> std::io::Result<()> {
         println!(
             "write_lengthened data len: {}*{}",
             data.len(),
@@ -76,7 +90,7 @@ impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
         Ok(())
     }
 
-    fn write_unit<T: Copy + 'static>(&mut self, unit: &T) -> std::io::Result<()> {
+    fn write_unit<T>(&mut self, unit: &T) -> std::io::Result<()> {
         self.pad::<T>()?;
         let slice = std::slice::from_ref(unit);
         let bytes = unsafe {
@@ -86,11 +100,29 @@ impl<W: std::io::Write> FlatWrite for DefaultFlatWrite<W> {
         self.offset += bytes.len();
         Ok(())
     }
+
+    fn lengthened_size<T>(data: &[T], offset: &mut usize) {
+        Self::unit_size(&data.len(), offset);
+        Self::pad_size::<T>(offset);
+        let data: &[u8] = unsafe {
+            std::slice::from_raw_parts(data.as_ptr().cast(), std::mem::size_of_val(data))
+        };
+        *offset += data.len();
+    }
+
+    fn unit_size<T>(unit: &T, offset: &mut usize) {
+        Self::pad_size::<T>(offset);
+        let slice = std::slice::from_ref(unit);
+        let bytes = unsafe {
+            std::slice::from_raw_parts(slice.as_ptr() as *const u8, std::mem::size_of_val(slice))
+        };
+        *offset += bytes.len();
+    }
 }
 
 /// TODO
 #[derive(Clone, Copy, Debug, Default)]
-pub struct DerefWrapper<S>(S);
+pub struct DerefWrapper<S>(pub S);
 
 impl<S> Deref for DerefWrapper<std::rc::Rc<S>>
 where
@@ -149,7 +181,7 @@ where
     }
 
     /// TODO
-    pub fn read_lengthened<T: Copy + 'static>(&mut self) -> TypedBytes<S, T> {
+    pub fn read_lengthened<T>(&mut self) -> TypedBytes<S, T> {
         let len = self.read_unit::<usize>();
         let (head, _data, _tail) = unsafe { self.buffer[self.start..].align_to::<T>() };
         let end = self.start + head.len() + len * std::mem::size_of::<T>();
@@ -162,7 +194,7 @@ where
     }
 
     /// TODO
-    pub fn read_unit<T: Copy + 'static>(&mut self) -> T {
+    pub fn read_unit<T: Copy>(&mut self) -> T {
         let (head, data, _tail) = unsafe { self.buffer[self.start..].align_to::<T>() };
         self.start += head.len() + std::mem::size_of::<T>();
         data[0]
@@ -206,7 +238,6 @@ where
 impl<S, T> Deref for TypedBytes<S, T>
 where
     S: Deref<Target = [u8]>,
-    T: Copy + 'static,
 {
     type Target = [T];
 
@@ -218,29 +249,97 @@ where
 }
 
 /// TODO
-pub trait Flatten {
-    /// TODO
-    type Flat<S>;
-
+pub trait Entomb {
     /// TODO
     fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()>;
 
     /// TODO
-    fn exhume<S>(buffer: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
-    where
-        S: Deref<Target = [u8]> + Clone;
+    fn flat_size<W: FlatWrite>(&self, offset: &mut usize);
 }
 
-/// A type that can write its contents into a region.
-pub trait CopyOnto<C: Region> {
-    /// Copy self into the target container, returning an index that allows to
-    /// look up the corresponding read item.
-    fn copy_onto(self, target: &mut C) -> C::Index;
+/// TODO
+pub trait Exhume<S> {
+    /// TODO
+    type Flat: Region; // where S: Deref<Target=[u8]> + Clone + Default;
+
+    /// TODO
+    fn exhume(buffer: &mut Bytes<S>) -> std::io::Result<Self::Flat>
+    where
+        S: Deref<Target = [u8]> + Clone + Default;
+}
+
+impl<R> FlatStack<R>
+where
+    R: Region + Entomb,
+{
+    /// TODO
+    pub fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
+        write.write_lengthened(&self.indices)?;
+        self.region.entomb(write)
+    }
+
+    /// TODO
+    pub fn flat_size<W: FlatWrite>(&self, offset: &mut usize) {
+        W::lengthened_size(&self.indices, offset);
+        self.region.flat_size::<W>(offset);
+    }
+}
+
+impl<R> FlatStack<R>
+where
+    R: Region,
+{
+    /// TODO
+    pub fn exhume<S>(buffer: &mut Bytes<S>) -> std::io::Result<ZeroCopyFlatStack<S, R::Flat>>
+    where
+        S: Deref<Target = [u8]> + Clone + Default,
+        R: Exhume<S>,
+    {
+        let indices = buffer.read_lengthened();
+        let region = R::exhume(buffer)?;
+        Ok(ZeroCopyFlatStack { indices, region })
+    }
+}
+
+/// TODO
+pub struct ZeroCopyFlatStack<S, R>
+where
+    R: Region,
+{
+    indices: TypedBytes<S, R::Index>,
+    region: R,
+}
+
+impl<S, R> ZeroCopyFlatStack<S, R>
+where
+    S: Deref<Target = [u8]>,
+    R: Region,
+{
+    /// TODO
+    pub fn iter(&self) -> Iter<R> {
+        self.into_iter()
+    }
+}
+
+impl<'a, S, R> IntoIterator for &'a ZeroCopyFlatStack<S, R>
+where
+    S: Deref<Target = [u8]>,
+    R: Region,
+{
+    type Item = R::ReadItem<'a>;
+    type IntoIter = Iter<'a, R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter {
+            inner: self.indices.deref().iter(),
+            region: &self.region,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::flatten::{Bytes, DefaultFlatWrite, DerefWrapper, Flatten, ALIGNMENT};
+    use crate::flatten::{Bytes, DefaultFlatWrite, DerefWrapper, ALIGNMENT, Entomb, Exhume};
     use crate::{OwnedRegion, Push, Region, StringRegion};
     use std::io::Write;
     use std::rc::Rc;
@@ -277,9 +376,16 @@ mod tests {
         let mut other_region = OwnedRegion::default();
         let other_index = other_region.push([0x11223344566778899u128; 16]);
 
+        let mut offset = 0;
+        region.flat_size::<DefaultFlatWrite<&mut Vec<u8>>>(&mut offset);
+        other_region.flat_size::<DefaultFlatWrite<&mut Vec<u8>>>(&mut offset);
+        <DefaultFlatWrite<&mut Vec<u8>>>::finish_size(&mut offset);
+
         region.entomb(&mut write).unwrap();
         other_region.entomb(&mut write).unwrap();
         write.finish().unwrap();
+
+        assert_eq!(offset, buffer.len());
 
         let mut aligned_buffer = vec![0u8; buffer.len() + ALIGNMENT];
         let offset = aligned_buffer.as_ptr().align_offset(ALIGNMENT);

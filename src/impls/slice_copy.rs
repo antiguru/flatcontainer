@@ -223,20 +223,23 @@ where
 }
 
 mod flatten {
-    use crate::flatten::{Bytes, FlatWrite, Flatten, TypedBytes};
+    use crate::flatten::{Bytes, Entomb, Exhume, FlatWrite, TypedBytes};
     use crate::{OwnedRegion, Region};
     use std::ops::Deref;
 
-    impl<T: Copy + 'static> Flatten for OwnedRegion<T> {
-        type Flat<S> = BorrowedRegion<S, T>;
+    impl<T: Copy + 'static> Entomb for OwnedRegion<T> {
         fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
             write.write_lengthened(&self.slices)
         }
 
-        fn exhume<'a, S>(bytes: &mut Bytes<S>) -> std::io::Result<Self::Flat<S>>
-        where
-            S: Deref<Target = [u8]> + Clone,
-        {
+        fn flat_size<W: FlatWrite>(&self, offset: &mut usize) {
+            W::lengthened_size(&self.slices, offset);
+        }
+    }
+
+    impl<T: Copy + 'static, S: Clone + Default + Deref<Target=[u8]>> Exhume<S> for OwnedRegion<T> {
+        type Flat = BorrowedRegion<S, T>;
+        fn exhume(bytes: &mut Bytes<S>) -> std::io::Result<Self::Flat> {
             Ok(BorrowedRegion {
                 bytes: bytes.read_lengthened(),
             })
