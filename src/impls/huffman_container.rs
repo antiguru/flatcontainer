@@ -68,7 +68,7 @@ where
     fn index(&self, (lower, upper): Self::Index) -> Self::ReadItem<'_> {
         match &self.inner {
             Ok((huffman, bytes, _bits)) => {
-                Wrapped::encoded(Encoded::new(huffman, &bytes, (lower, upper)))
+                Wrapped::encoded(Encoded::new(huffman, bytes, (lower, upper)))
             }
             Err(raw) => Wrapped::decoded(&raw[lower..upper]),
         }
@@ -104,7 +104,13 @@ where
 
 /// Re-used function to push encoded symbols into a byte vector.
 ///
-/// Used in multiple `Push` implementations.
+/// This function encodes the symbols of `iter` into a sequence of bits,
+/// which are bundled as bytes and pushed into `bytes`. The total number
+/// of encoded bits is updated at the same time.
+///
+/// The first three arguments correspond to the `Ok` variant of the
+/// `HuffmanContainer` type, and this function would be a method of the
+/// hypothetical type that this variant represents.
 fn push_symbols<'a, I, B>(
     huffman: &'a Huffman<B>,
     bytes: &mut Vec<u8>,
@@ -115,10 +121,15 @@ where
     B: Ord + 'a,
     I: Iterator<Item = &'a B>,
 {
-    // let start = 8 * bytes.len(); // starting *bit*.
-    // *bits = start;
+    // We'll only append bits, and start at the number of bits we have already.
     let start = *bits;
+    // Any incomplete bytes are peeled off and re-presented as by the encoder,
+    // so we should shear them off from the count here to avoid double counting
+    // when we get encoder outputs.
     *bits = *bits - (*bits % 8);
+    // We may end with a partial byte, in which case we should
+    // determine and start with those bits, to write the newly
+    // encoded bits into the same byte.
     let initially = if start % 8 == 0 {
         (0, 0)
     } else {
@@ -126,6 +137,8 @@ where
         let byte = bytes.pop().unwrap() >> (8 - bits);
         (byte, bits)
     };
+    // Each encoded by should be pushed, and the number of bits maintained.
+    // The `Ok` and `Err` variants describe whole and partial bytes, respectively.
     for byte in huffman.encode(initially, iter) {
         match byte {
             Ok(byte) => {
@@ -661,7 +674,6 @@ mod huffman {
                             }
                             Decode::Further(_) => {
                                 panic!("malformed data: decode incomplete (Further)");
-                                return None;
                             }
                             Decode::Symbol(s, bits) => {
                                 if bits <= &self.pending_bits {
