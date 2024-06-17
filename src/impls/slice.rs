@@ -1,5 +1,6 @@
 //! A region that stores slices.
 
+use std::cmp::Ordering;
 use std::fmt::{Debug, Formatter};
 use std::ops::{Deref, Range};
 
@@ -131,12 +132,6 @@ pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Reg
     Result<ReadSliceInner<'a, C, O>, &'a [C::Owned]>,
 );
 
-struct ReadSliceInner<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
-    region: &'a SliceRegion<C, O>,
-    start: usize,
-    end: usize,
-}
-
 impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     /// Read the n-th item from the underlying region.
     ///
@@ -177,6 +172,45 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
         self.into_iter()
     }
 }
+
+impl<R: Region, O: OffsetContainer<R::Index>> PartialEq for ReadSlice<'_, R, O>
+where
+    for<'a> R::ReadItem<'a>: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.iter().eq(*other)
+    }
+}
+
+impl<R: Region, O: OffsetContainer<R::Index>> Eq for ReadSlice<'_, R, O> where
+    for<'a> R::ReadItem<'a>: Eq
+{
+}
+
+impl<R: Region, O: OffsetContainer<R::Index>> PartialOrd for ReadSlice<'_, R, O>
+where
+    for<'a> R::ReadItem<'a>: PartialOrd,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.iter().partial_cmp(*other)
+    }
+}
+
+impl<R: Region, O: OffsetContainer<R::Index>> Ord for ReadSlice<'_, R, O>
+where
+    for<'a> R::ReadItem<'a>: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.iter().cmp(*other)
+    }
+}
+
+struct ReadSliceInner<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
+    region: &'a SliceRegion<C, O>,
+    start: usize,
+    end: usize,
+}
+
 impl<C: Region, O: OffsetContainer<C::Index>> ReadSliceInner<'_, C, O> {
     /// Read the n-th item from the underlying region.
     ///
@@ -562,6 +596,57 @@ mod tests {
         let index = r.push([1; 4]);
 
         assert_eq!("[1, 1, 1, 1]", format!("{:?}", r.index(index).clone()));
+    }
+
+    #[test]
+    fn test_read_slice_eq() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        let index = r.push([1; 4]);
+
+        assert_eq!(
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 4]),
+            r.index(index)
+        );
+        assert_ne!(
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![0; 4]),
+            r.index(index)
+        );
+        assert_ne!(
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 5]),
+            r.index(index)
+        );
+    }
+
+    #[test]
+    fn test_read_slice_cmp() {
+        let mut r = <SliceRegion<MirrorRegion<u8>>>::default();
+        let index = r.push([1; 4]);
+
+        assert_eq!(
+            Ordering::Less,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![0; 4]).cmp(&r.index(index))
+        );
+        assert_eq!(
+            Ordering::Equal,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 4]).cmp(&r.index(index))
+        );
+        assert_eq!(
+            Ordering::Greater,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![2; 4]).cmp(&r.index(index))
+        );
+
+        assert_eq!(
+            Ordering::Less,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 3]).cmp(&r.index(index))
+        );
+        assert_eq!(
+            Ordering::Equal,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 4]).cmp(&r.index(index))
+        );
+        assert_eq!(
+            Ordering::Greater,
+            <ReadSlice<_, _> as IntoOwned>::borrow_as(&vec![1; 5]).cmp(&r.index(index))
+        );
     }
 
     #[test]
