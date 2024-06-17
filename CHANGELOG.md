@@ -6,6 +6,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/antiguru/flatcontainer/compare/v0.4.0...v0.4.1) - 2024-06-17
+
+### Other
+- Add missing Ord and ReserveItems impls ([#39](https://github.com/antiguru/flatcontainer/pull/39))
+- Huffman container ([#20](https://github.com/antiguru/flatcontainer/pull/20))
+- Fix warning on Rust 1.79 ([#38](https://github.com/antiguru/flatcontainer/pull/38))
+- Move complex tests to separate folder ([#34](https://github.com/antiguru/flatcontainer/pull/34))
+
 ## [0.3.2](https://github.com/antiguru/flatcontainer/compare/v0.3.1...v0.3.2) - 2024-05-28
 
 ### Other
