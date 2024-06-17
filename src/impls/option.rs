@@ -125,6 +125,22 @@ where
     }
 }
 
+impl<T, TR> ReserveItems<Option<T>> for OptionRegion<TR>
+where
+    TR: Region + ReserveItems<T>,
+{
+    #[inline]
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = Option<T>> + Clone,
+    {
+        // Clippy is confused about using `flatten` here, which we cannot use because
+        // the iterator isn't `Clone`.
+        #[allow(clippy::filter_map_identity)]
+        self.inner.reserve_items(items.filter_map(|r| r));
+    }
+}
+
 impl<'a, T: 'a, TR> ReserveItems<&'a Option<T>> for OptionRegion<TR>
 where
     TR: Region + ReserveItems<&'a T>,
@@ -148,6 +164,8 @@ mod tests {
     fn test_reserve() {
         let mut r = <OptionRegion<MirrorRegion<u8>>>::default();
         ReserveItems::reserve_items(&mut r, [Some(0), None].iter());
+
+        ReserveItems::reserve_items(&mut r, [Some(0), None].into_iter());
     }
 
     #[test]

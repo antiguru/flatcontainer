@@ -147,6 +147,21 @@ where
     }
 }
 
+impl<T, TC, E, EC> ReserveItems<Result<T, E>> for ResultRegion<TC, EC>
+where
+    TC: Region + ReserveItems<T>,
+    EC: Region + ReserveItems<E>,
+{
+    #[inline]
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = Result<T, E>> + Clone,
+    {
+        self.oks.reserve_items(items.clone().filter_map(|r| r.ok()));
+        self.errs.reserve_items(items.filter_map(|r| r.err()));
+    }
+}
+
 impl<'a, T: 'a, TC, E: 'a, EC> ReserveItems<&'a Result<T, E>> for ResultRegion<TC, EC>
 where
     TC: Region + ReserveItems<&'a T>,
@@ -174,6 +189,8 @@ mod tests {
     fn test_reserve() {
         let mut r = <ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>::default();
         ReserveItems::reserve_items(&mut r, [Ok(0), Err(1)].iter());
+
+        ReserveItems::reserve_items(&mut r, [Ok(0), Err(1)].into_iter());
     }
 
     #[test]
