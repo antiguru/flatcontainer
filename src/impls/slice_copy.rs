@@ -237,7 +237,7 @@ mod flatten {
         }
     }
 
-    impl<T: Copy + 'static, S: Clone + Default + Deref<Target=[u8]>> Exhume<S> for OwnedRegion<T> {
+    impl<T: Copy + 'static, S: Clone + Default + Deref<Target = [u8]>> Exhume<S> for OwnedRegion<T> {
         type Flat = BorrowedRegion<S, T>;
         fn exhume(bytes: &mut Bytes<S>) -> std::io::Result<Self::Flat> {
             Ok(BorrowedRegion {

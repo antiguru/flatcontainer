@@ -339,7 +339,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::flatten::{Bytes, DefaultFlatWrite, DerefWrapper, ALIGNMENT, Entomb, Exhume};
+    use crate::flatten::{Bytes, DefaultFlatWrite, DerefWrapper, Entomb, Exhume, ALIGNMENT};
     use crate::{OwnedRegion, Push, Region, StringRegion};
     use std::io::Write;
     use std::rc::Rc;

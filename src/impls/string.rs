@@ -89,9 +89,9 @@ where
 }
 
 mod flatten {
-    use std::ops::Deref;
     use crate::flatten::{Bytes, Entomb, Exhume, FlatWrite};
     use crate::{Region, StringRegion};
+    use std::ops::Deref;
 
     impl<R: Entomb> Entomb for StringRegion<R> {
         fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
@@ -107,7 +107,7 @@ mod flatten {
     where
         // for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
         // for<'a, 'b> R::Flat<'a>: ReadRegion<ReadItem<'b> = &'b [u8]> + 'b,
-        S: Clone + Default + Deref<Target=[u8]>,
+        S: Clone + Default + Deref<Target = [u8]>,
         for<'a> R: Exhume<S> + Region<ReadItem<'a> = &'a [u8]> + 'a,
         for<'a> R::Flat: Region<ReadItem<'a> = &'a [u8]> + 'a,
     {
