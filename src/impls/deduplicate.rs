@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::offsets::OffsetContainer;
+use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
 use crate::{Push, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
@@ -116,7 +116,7 @@ where
 /// ```
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ConsecutiveOffsetPairs<R, O = Vec<usize>>
+pub struct ConsecutiveOffsetPairs<R, O = OffsetOptimized>
 where
     R: Region<Index = (usize, usize)>,
     O: OffsetContainer<usize>,
