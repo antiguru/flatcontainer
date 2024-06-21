@@ -89,7 +89,7 @@ pub trait Containerized {
 }
 
 /// Push an item `T` into a region.
-pub trait Push<T>: Region {
+pub trait Push<T: ?Sized>: Region {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
     #[must_use]
@@ -99,7 +99,7 @@ pub trait Push<T>: Region {
 /// Reserve space in the receiving region.
 ///
 /// Closely related to [`Push`], but separate because target type is likely different.
-pub trait ReserveItems<T>: Region {
+pub trait ReserveItems<T: ?Sized> {
     /// Ensure that the region can absorb `items` without reallocation.
     fn reserve_items<I>(&mut self, items: I)
     where
