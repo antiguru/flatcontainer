@@ -1,74 +1,100 @@
 //! What follows is an example of a Cow-like type that can be used to switch between a GAT
 //! and an owned type at runtime.
 
-use flatcontainer::{FlatStack, IntoOwned, Push, Region, StringRegion};
-use std::convert::Infallible;
 use std::fmt::{Debug, Formatter};
+use std::marker::PhantomData;
 
-#[allow(dead_code)]
-enum GatCow<'a, B, T> {
+use flatcontainer::{FlatStack, IntoOwned, Push, Region, StringRegion};
+
+pub struct GatCow<'a, B>
+where
+    B: IntoOwned<'a>,
+{
+    inner: GatCowInner<B, B::Owned>,
+    _marker: PhantomData<()>,
+}
+
+enum GatCowInner<B, T> {
     Borrowed(B),
     Owned(T),
-    Never(&'a Infallible),
 }
 
-impl<'a, B, T> GatCow<'a, B, T>
+impl<'a, B> From<GatCowInner<B, B::Owned>> for GatCow<'a, B>
 where
-    B: IntoOwned<'a, Owned = T> + Copy,
+    B: IntoOwned<'a>,
 {
-    pub fn to_mut(&mut self) -> &mut T {
-        match self {
-            Self::Borrowed(borrowed) => {
-                *self = Self::Owned(borrowed.into_owned());
-                match *self {
-                    Self::Borrowed(..) => unreachable!(),
-                    Self::Owned(ref mut owned) => owned,
-                    Self::Never(_) => unreachable!(),
+    fn from(inner: GatCowInner<B, B::Owned>) -> Self {
+        Self {
+            inner,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, B> GatCow<'a, B>
+where
+    B: IntoOwned<'a> + Copy,
+{
+    pub const fn is_borrowed(&self) -> bool {
+        use GatCowInner::*;
+        match &self.inner {
+            Borrowed(_) => true,
+            Owned(_) => false,
+        }
+    }
+
+    pub const fn is_owned(&self) -> bool {
+        !self.is_borrowed()
+    }
+
+    pub fn to_mut(&mut self) -> &mut B::Owned {
+        match self.inner {
+            GatCowInner::Borrowed(borrowed) => {
+                self.inner = GatCowInner::Owned(borrowed.into_owned());
+                match &mut self.inner {
+                    GatCowInner::Borrowed(..) => unreachable!(),
+                    GatCowInner::Owned(owned) => owned,
                 }
             }
-            Self::Owned(ref mut owned) => owned,
-            Self::Never(_) => unreachable!(),
+            GatCowInner::Owned(ref mut owned) => owned,
         }
     }
 }
 
-impl<'a, B, T> IntoOwned<'a> for GatCow<'a, B, T>
+impl<'a, B> IntoOwned<'a> for GatCow<'a, B>
 where
-    B: IntoOwned<'a, Owned = T> + Copy,
+    B: IntoOwned<'a> + Copy,
 {
-    type Owned = T;
+    type Owned = B::Owned;
 
-    fn into_owned(self) -> T {
-        match self {
-            GatCow::Borrowed(b) => b.into_owned(),
-            GatCow::Owned(o) => o,
-            Self::Never(_) => unreachable!(),
+    fn into_owned(self) -> B::Owned {
+        match self.inner {
+            GatCowInner::Borrowed(b) => b.into_owned(),
+            GatCowInner::Owned(o) => o,
         }
     }
 
-    fn clone_onto(self, other: &mut T) {
-        match self {
-            GatCow::Borrowed(b) => b.clone_onto(other),
-            GatCow::Owned(o) => *other = o,
-            Self::Never(_) => unreachable!(),
+    fn clone_onto(self, other: &mut B::Owned) {
+        match self.inner {
+            GatCowInner::Borrowed(b) => b.clone_onto(other),
+            GatCowInner::Owned(o) => *other = o,
         }
     }
 
-    fn borrow_as(owned: &'a T) -> Self {
-        GatCow::Borrowed(IntoOwned::borrow_as(owned))
+    fn borrow_as(owned: &'a B::Owned) -> Self {
+        GatCowInner::Borrowed(IntoOwned::borrow_as(owned)).into()
     }
 }
 
-impl<B, T> Debug for GatCow<'_, B, T>
+impl<'a, B> Debug for GatCow<'a, B>
 where
-    B: Debug,
-    T: Debug,
+    B: IntoOwned<'a> + Debug,
+    B::Owned: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            GatCow::Borrowed(b) => b.fmt(f),
-            GatCow::Owned(o) => o.fmt(f),
-            Self::Never(_) => unreachable!(),
+        match &self.inner {
+            GatCowInner::Borrowed(b) => b.fmt(f),
+            GatCowInner::Owned(o) => o.fmt(f),
         }
     }
 }
@@ -82,7 +108,7 @@ where
     for<'a> R::ReadItem<'a>: Copy,
 {
     type Owned = <R as Region>::Owned;
-    type ReadItem<'a> = GatCow<'a, R::ReadItem<'a>, R::Owned> where Self: 'a;
+    type ReadItem<'a> = GatCow<'a, R::ReadItem<'a>> where Self: 'a;
     type Index = R::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -93,7 +119,7 @@ where
     }
 
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        GatCow::Borrowed(self.0.index(index))
+        GatCowInner::Borrowed(self.0.index(index)).into()
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -116,11 +142,11 @@ where
     where
         Self: 'a,
     {
-        match item {
-            GatCow::Borrowed(b) => GatCow::Borrowed(R::reborrow(b)),
-            GatCow::Owned(o) => GatCow::Owned(o),
-            GatCow::Never(_) => unreachable!(),
+        match item.inner {
+            GatCowInner::Borrowed(b) => GatCowInner::Borrowed(R::reborrow(b)),
+            GatCowInner::Owned(o) => GatCowInner::Owned(o),
         }
+        .into()
     }
 }
 
