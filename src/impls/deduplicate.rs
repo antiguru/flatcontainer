@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Push, Region};
+use crate::{Push, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
 ///
@@ -220,6 +220,19 @@ where
         self.last_index = index.1;
         self.offsets.push(index.1);
         self.offsets.len() - 2
+    }
+}
+
+impl<R, O, T> ReserveItems<T> for ConsecutiveOffsetPairs<R, O>
+where
+    R: Region<Index = (usize, usize)> + ReserveItems<T>,
+    O: OffsetContainer<usize>,
+{
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = T> + Clone,
+    {
+        self.inner.reserve_items(items);
     }
 }
 
