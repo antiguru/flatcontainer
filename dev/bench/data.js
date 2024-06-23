@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1718990222081,
+  "lastUpdate": 1719167806753,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -4991,6 +4991,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_realloc",
             "value": 19635722.4,
             "range": "± 124079.99",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "4f4d7479bc77563ae8a9d82357ecb9d1449861a5",
+          "message": "Efficient cloning of regions and flat stack (#45)\n\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-06-23T14:33:19-04:00",
+          "tree_id": "f4e28a0229bc5f279f7864caec83a7841900c7cb",
+          "url": "https://github.com/antiguru/flatcontainer/commit/4f4d7479bc77563ae8a9d82357ecb9d1449861a5"
+        },
+        "date": 1719167805959,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 956.2,
+            "range": "± 134.41",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 399197.58,
+            "range": "± 30111.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 32583558.3,
+            "range": "± 686267.51",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16213894.8,
+            "range": "± 677576.23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 205285.79,
+            "range": "± 2698.20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 213407.22,
+            "range": "± 3536.02",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 213105.66,
+            "range": "± 2250.92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 46224917.5,
+            "range": "± 1426012.43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 51335943.6,
+            "range": "± 1581273.78",
             "unit": "ns/iter"
           }
         ]
