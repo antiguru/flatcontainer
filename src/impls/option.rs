@@ -25,10 +25,22 @@ impl<T: Containerized> Containerized for Option<T> {
 /// assert_eq!(Some(123), r.index(some_index));
 /// assert_eq!(None, r.index(none_index));
 /// ```
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OptionRegion<R> {
     inner: R,
+}
+
+impl<R: Clone> Clone for OptionRegion<R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+    }
 }
 
 impl<R: Region> Region for OptionRegion<R> {

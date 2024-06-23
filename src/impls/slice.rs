@@ -51,18 +51,36 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 ///
 /// assert_eq!(r.index(de_index).get(2), "jagen");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SliceRegion<C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
+pub struct SliceRegion<R: Region, O = Vec<<R as Region>::Index>> {
     /// Container of slices.
     slices: O,
     /// Inner region.
-    inner: C,
+    inner: R,
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
-    type Owned = Vec<C::Owned>;
-    type ReadItem<'a> = ReadSlice<'a, C, O> where Self: 'a;
+impl<R, O> Clone for SliceRegion<R, O>
+where
+    R: Region + Clone,
+    O: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            slices: self.slices.clone(),
+            inner: self.inner.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.slices.clone_from(&source.slices);
+        self.inner.clone_from(&source.inner);
+    }
+}
+
+impl<R: Region, O: OffsetContainer<R::Index>> Region for SliceRegion<R, O> {
+    type Owned = Vec<R::Owned>;
+    type ReadItem<'a> = ReadSlice<'a, R, O> where Self: 'a;
     type Index = (usize, usize);
 
     #[inline]
@@ -72,7 +90,7 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
     {
         Self {
             slices: O::default(),
-            inner: C::merge_regions(regions.map(|r| &r.inner)),
+            inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
     }
 
@@ -117,22 +135,22 @@ impl<C: Region, O: OffsetContainer<C::Index>> Region for SliceRegion<C, O> {
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Default for SliceRegion<C, O> {
+impl<R: Region, O: OffsetContainer<R::Index>> Default for SliceRegion<R, O> {
     #[inline]
     fn default() -> Self {
         Self {
             slices: O::default(),
-            inner: C::default(),
+            inner: R::default(),
         }
     }
 }
 
 /// A helper to read data out of a slice region.
-pub struct ReadSlice<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>>(
-    Result<ReadSliceInner<'a, C, O>, &'a [C::Owned]>,
+pub struct ReadSlice<'a, R: Region, O: OffsetContainer<R::Index> = Vec<<R as Region>::Index>>(
+    Result<ReadSliceInner<'a, R, O>, &'a [R::Owned]>,
 );
 
-impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
+impl<R: Region, O: OffsetContainer<R::Index>> ReadSlice<'_, R, O> {
     /// Read the n-th item from the underlying region.
     ///
     /// # Panics
@@ -141,7 +159,7 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSlice<'_, C, O> {
     /// length of this slice representation.
     #[inline]
     #[must_use]
-    pub fn get(&self, index: usize) -> C::ReadItem<'_> {
+    pub fn get(&self, index: usize) -> R::ReadItem<'_> {
         match &self.0 {
             Ok(inner) => inner.get(index),
             Err(slice) => IntoOwned::borrow_as(&slice[index]),
@@ -205,13 +223,13 @@ where
     }
 }
 
-struct ReadSliceInner<'a, C: Region, O: OffsetContainer<C::Index> = Vec<<C as Region>::Index>> {
-    region: &'a SliceRegion<C, O>,
+struct ReadSliceInner<'a, R: Region, O: OffsetContainer<R::Index> = Vec<<R as Region>::Index>> {
+    region: &'a SliceRegion<R, O>,
     start: usize,
     end: usize,
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> ReadSliceInner<'_, C, O> {
+impl<R: Region, O: OffsetContainer<R::Index>> ReadSliceInner<'_, R, O> {
     /// Read the n-th item from the underlying region.
     ///
     /// # Panics
@@ -220,7 +238,7 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSliceInner<'_, C, O> {
     /// length of this slice representation.
     #[inline]
     #[must_use]
-    pub fn get(&self, index: usize) -> C::ReadItem<'_> {
+    pub fn get(&self, index: usize) -> R::ReadItem<'_> {
         assert!(
             index <= self.end - self.start,
             "Index {index} out of bounds {} ({}..{})",
@@ -246,38 +264,38 @@ impl<C: Region, O: OffsetContainer<C::Index>> ReadSliceInner<'_, C, O> {
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Debug for ReadSlice<'_, C, O>
+impl<R: Region, O: OffsetContainer<R::Index>> Debug for ReadSlice<'_, R, O>
 where
-    for<'a> C::ReadItem<'a>: Debug,
+    for<'a> R::ReadItem<'a>: Debug,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSlice<'_, C, O> {
+impl<R: Region, O: OffsetContainer<R::Index>> Clone for ReadSlice<'_, R, O> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Clone for ReadSliceInner<'_, C, O> {
+impl<R: Region, O: OffsetContainer<R::Index>> Clone for ReadSliceInner<'_, R, O> {
     #[inline]
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSlice<'_, C, O> {}
-impl<C: Region, O: OffsetContainer<C::Index>> Copy for ReadSliceInner<'_, C, O> {}
+impl<R: Region, O: OffsetContainer<R::Index>> Copy for ReadSlice<'_, R, O> {}
+impl<R: Region, O: OffsetContainer<R::Index>> Copy for ReadSliceInner<'_, R, O> {}
 
-impl<'a, C, O> IntoOwned<'a> for ReadSlice<'a, C, O>
+impl<'a, R, O> IntoOwned<'a> for ReadSlice<'a, R, O>
 where
-    C: Region,
-    O: OffsetContainer<C::Index>,
+    R: Region,
+    O: OffsetContainer<R::Index>,
 {
-    type Owned = Vec<C::Owned>;
+    type Owned = Vec<R::Owned>;
 
     #[inline]
     fn into_owned(self) -> Self::Owned {
@@ -300,9 +318,9 @@ where
     }
 }
 
-impl<'a, C: Region, O: OffsetContainer<C::Index>> IntoIterator for ReadSlice<'a, C, O> {
-    type Item = C::ReadItem<'a>;
-    type IntoIter = ReadSliceIter<'a, C, O>;
+impl<'a, R: Region, O: OffsetContainer<R::Index>> IntoIterator for ReadSlice<'a, R, O> {
+    type Item = R::ReadItem<'a>;
+    type IntoIter = ReadSliceIter<'a, R, O>;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {

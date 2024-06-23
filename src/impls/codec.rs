@@ -62,10 +62,23 @@ fn consolidate_slice<T: Ord>(slice: &mut [(T, usize)]) -> usize {
 }
 
 /// A region that encodes its data in a codec `C`.
-#[derive(Default, Debug, Clone)]
-pub struct CodecRegion<C: Codec, R = OwnedRegion<u8>> {
+#[derive(Default, Debug)]
+pub struct CodecRegion<C, R = OwnedRegion<u8>> {
     inner: R,
     codec: C,
+}
+
+impl<C: Clone, R: Clone> Clone for CodecRegion<C, R> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            codec: self.codec.clone(),
+        }
+    }
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+        self.codec.clone_from(&source.codec);
+    }
 }
 
 impl<C: Codec, R> Region for CodecRegion<C, R>
@@ -104,6 +117,7 @@ where
     }
 
     fn clear(&mut self) {
+        self.inner.clear();
         self.codec = Default::default();
     }
 

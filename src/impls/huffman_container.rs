@@ -33,6 +33,20 @@ where
     }
 }
 
+impl<B: Ord + Clone> Clone for HuffmanContainer<B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            stats: self.stats.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.inner.clone_from(&source.inner);
+        self.stats.clone_from(&source.stats);
+    }
+}
+
 impl<B> Region for HuffmanContainer<B>
 where
     B: Ord + Clone + Sized + 'static,
@@ -462,6 +476,21 @@ mod huffman {
         /// Byte-by-byte decoder.
         decode: [Decode<T>; 256],
     }
+
+    impl<T: Ord + Clone> Clone for Huffman<T> {
+        fn clone(&self) -> Self {
+            Self {
+                encode: self.encode.clone(),
+                decode: self.decode.clone(),
+            }
+        }
+
+        fn clone_from(&mut self, source: &Self) {
+            self.encode.clone_from(&source.encode);
+            self.decode.clone_from(&source.decode);
+        }
+    }
+
     impl<T: Ord> Huffman<T> {
         /// Encodes the provided symbols as a sequence of bytes.
         ///
@@ -578,7 +607,7 @@ mod huffman {
     }
 
     /// Decoder
-    #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Default)]
+    #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Default, Clone)]
     pub enum Decode<T> {
         /// An as-yet unfilled slot.
         #[default]

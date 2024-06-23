@@ -27,10 +27,22 @@ use crate::{CopyIter, Push, Region, ReserveItems};
 /// assert_eq!(panagram_de.as_bytes(), r.index(de_index));
 /// assert_eq!(panagram_en.as_bytes(), r.index(en_index));
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct OwnedRegion<T> {
     slices: Vec<T>,
+}
+
+impl<T: Clone> Clone for OwnedRegion<T> {
+    fn clone(&self) -> Self {
+        Self {
+            slices: self.slices.clone(),
+        }
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        self.slices.clone_from(&source.slices);
+    }
 }
 
 impl<T> Region for OwnedRegion<T>

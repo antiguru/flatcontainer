@@ -16,10 +16,26 @@ macro_rules! tuple_flatcontainer {
 
             /// A region for a tuple.
             #[allow(non_snake_case)]
-            #[derive(Default, Clone, Debug)]
+            #[derive(Default, Debug)]
             #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
             pub struct [<Tuple $($name)* Region >]<$($name),*> {
                 $([<container $name>]: $name),*
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: Region + Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*>
+            where
+               $(<$name as Region>::Index: crate::Index),*
+            {
+                fn clone(&self) -> Self {
+                    Self {
+                        $([<container $name>]: self.[<container $name>].clone(),)*
+                    }
+                }
+
+                fn clone_from(&mut self, source: &Self) {
+                    $(self.[<container $name>].clone_from(&source.[<container $name>]);)*
+                }
             }
 
             #[allow(non_snake_case)]

@@ -263,6 +263,124 @@ fn vec_u_vn_s_prealloc(bencher: &mut Bencher) {
     );
 }
 
+#[bench]
+fn empty_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![(); 1024]);
+}
+#[bench]
+fn u64_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![0u64; 1024]);
+}
+#[bench]
+fn u32x2_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![(0u32, 0u32); 1024]);
+}
+#[bench]
+fn u8_u64_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![(0u8, 0u64); 512]);
+}
+#[bench]
+fn str10_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec!["grawwwwrr!"; 1024]);
+}
+#[bench]
+fn str100_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec!["grawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrr!!!!!!!!!grawwwwrr!"; 1024]);
+}
+#[bench]
+fn string10_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![format!("grawwwwrr!"); 1024]);
+}
+#[bench]
+fn string20_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(bencher, vec![format!("grawwwwrr!!!!!!!!!!!"); 512]);
+}
+#[bench]
+fn vec_u_s_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(
+        bencher,
+        vec![vec![(0u64, "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+#[bench]
+fn vec_u_vn_s_copy_flat(bencher: &mut Bencher) {
+    _bench_copy_flat_containerized(
+        bencher,
+        vec![vec![(0u64, vec![(); 1 << 40], "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+
+#[bench]
+fn empty_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec![(); 1024]);
+}
+#[bench]
+fn u64_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec![0u64; 1024]);
+}
+#[bench]
+fn u32x2_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec![(0u32, 0u32); 1024]);
+}
+#[bench]
+fn u8_u64_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec![(0u8, 0u64); 512]);
+}
+#[bench]
+fn str10_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec!["grawwwwrr!"; 1024]);
+}
+#[bench]
+fn str100_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<OwnedRegion<_>, _>(bencher, vec!["grawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrrgrawwwwrr!!!!!!!!!grawwwwrr!"; 1024]);
+}
+#[bench]
+fn string10_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<SliceRegion<StringRegion>, _>(bencher, vec![format!("grawwwwrr!"); 1024]);
+}
+#[bench]
+fn string20_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<SliceRegion<StringRegion>, _>(
+        bencher,
+        vec![format!("grawwwwrr!!!!!!!!!!!"); 512],
+    );
+}
+#[bench]
+fn vec_u_s_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<SliceRegion<SliceRegion<TupleABRegion<MirrorRegion<_>, StringRegion>>>, _>(
+        bencher,
+        vec![vec![(0u64, "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+#[bench]
+fn vec_u_vn_s_copy_flat_region(bencher: &mut Bencher) {
+    _bench_copy_flat::<
+        SliceRegion<SliceRegion<TupleABCRegion<MirrorRegion<_>, OwnedRegion<_>, StringRegion>>>,
+        _,
+    >(
+        bencher,
+        vec![vec![(0u64, vec![(); 1 << 40], "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+#[bench]
+fn vec_u_vn_s_copy_flat_region_column(bencher: &mut Bencher) {
+    _bench_copy_flat::<
+        SliceRegion<
+            ColumnsRegion<
+                TupleABCRegion<
+                    MirrorRegion<_>,
+                    CollapseSequence<OwnedRegion<_>>,
+                    CollapseSequence<StringRegion>,
+                >,
+            >,
+        >,
+        _,
+    >(
+        bencher,
+        vec![vec![(0u64, vec![(); 1 << 40], "grawwwwrr!".to_string()); 32]; 32],
+    );
+}
+
 fn _bench_copy<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
     for<'a> <T as Containerized>::Region: Push<&'a T>,
@@ -281,6 +399,7 @@ where
         siz += this_siz;
         cap += this_cap
     });
+    bencher.bytes = siz as u64;
     println!("{siz} {cap}");
 }
 
@@ -302,6 +421,7 @@ where
         siz += this_siz;
         cap += this_cap
     });
+    bencher.bytes = siz as u64;
     println!("{siz} {cap}");
 }
 
@@ -321,25 +441,71 @@ fn _bench_realloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
     for<'a> <T as Containerized>::Region: Push<&'a T>,
 {
+    let mut arena = FlatStack::default_impl::<T>();
     bencher.iter(|| {
         // prepare encoded data for bencher.bytes
-        let mut arena = FlatStack::default_impl::<T>();
+        arena = FlatStack::default_impl::<T>();
         for _ in 0..1024 {
             arena.copy(&record);
         }
     });
+    let (mut siz, mut cap) = (0, 0);
+    arena.heap_size(|this_siz, this_cap| {
+        siz += this_siz;
+        cap += this_cap
+    });
+    bencher.bytes = siz as u64;
 }
 
 fn _bench_prealloc<T: Containerized + Eq>(bencher: &mut Bencher, record: T)
 where
     for<'a> <T as Containerized>::Region: ReserveItems<&'a T> + Push<&'a T>,
 {
+    let mut arena = FlatStack::default_impl::<T>();
     bencher.iter(|| {
+        arena = FlatStack::default_impl::<T>();
         // prepare encoded data for bencher.bytes
-        let mut arena = FlatStack::default_impl::<T>();
         arena.reserve_items(std::iter::repeat(&record).take(1024));
         for _ in 0..1024 {
             arena.copy(&record);
         }
     });
+    let (mut siz, mut cap) = (0, 0);
+    arena.heap_size(|this_siz, this_cap| {
+        siz += this_siz;
+        cap += this_cap
+    });
+    bencher.bytes = siz as u64;
+}
+
+fn _bench_copy_flat_containerized<T>(bencher: &mut Bencher, record: T)
+where
+    T: Containerized,
+    for<'a> <T as Containerized>::Region:
+        Push<&'a T> + Push<<<T as Containerized>::Region as Region>::ReadItem<'a>> + Clone,
+{
+    _bench_copy_flat::<T::Region, T>(bencher, record)
+}
+
+fn _bench_copy_flat<R, T>(bencher: &mut Bencher, record: T)
+where
+    for<'a> R: Region + Push<&'a T> + Push<<R as Region>::ReadItem<'a>> + Clone,
+{
+    // prepare encoded data for bencher.bytes
+    let mut arena = FlatStack::<R>::default();
+    for _ in 0..1024 {
+        arena.copy(&record);
+    }
+    let mut target = FlatStack::<R>::default();
+
+    bencher.iter(|| {
+        target.clone_from(&arena);
+    });
+    let (mut siz, mut cap) = (0, 0);
+    arena.heap_size(|this_siz, this_cap| {
+        siz += this_siz;
+        cap += this_cap
+    });
+    bencher.bytes = siz as u64;
+    println!("{siz} {cap}");
 }
