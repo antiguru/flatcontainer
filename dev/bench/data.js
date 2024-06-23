@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719167806753,
+  "lastUpdate": 1719171062273,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5069,6 +5069,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 51335943.6,
             "range": "± 1581273.78",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "84f6123a877aeb3ea47c4f93b554f4c1139fc4d9",
+          "message": "Use vectors as regions (#46)\n\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-06-23T15:27:49-04:00",
+          "tree_id": "faff4a5c3320196f45be04c43bbc4746e4eb03f6",
+          "url": "https://github.com/antiguru/flatcontainer/commit/84f6123a877aeb3ea47c4f93b554f4c1139fc4d9"
+        },
+        "date": 1719171061973,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 954.99,
+            "range": "± 10.04",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 378064.99,
+            "range": "± 15435.29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 32581179.5,
+            "range": "± 1117952.82",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16113621.1,
+            "range": "± 483308.77",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 238207,
+            "range": "± 8164.78",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 221193.08,
+            "range": "± 18048.71",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 226226.01,
+            "range": "± 4449.98",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 46686558.3,
+            "range": "± 2739983.24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 51548385.7,
+            "range": "± 1418767.30",
             "unit": "ns/iter"
           }
         ]
