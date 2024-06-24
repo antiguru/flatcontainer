@@ -715,6 +715,7 @@ mod tests {
 
             println!("size {size}, capacity {capacity}, allocations {count}");
         }
+        println!("fs size {}", std::mem::size_of_val(&fs));
         assert_eq!(&item.1, fs.get(0).1);
     }
 

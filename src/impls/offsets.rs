@@ -22,7 +22,11 @@ pub trait OffsetContainer<T>: Storage<T> {
 
 /// A container for offsets that can represent strides of offsets.
 ///
-/// Does not implement `OffsetContainer` because it cannot accept arbitrary pushes.
+/// Does not implement `OffsetContainer` because it cannot accept arbitrary pushes. Instead,
+/// its `push` method returns a boolean to indicate whether the push was successful or not.
+///
+/// This type can absorb sequences of the form `0, stride, 2 * stride, 3 * stride, ...` and
+/// saturates in a repeated last element.
 #[derive(Eq, PartialEq, Debug, Default, Clone, Copy)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum OffsetStride {
@@ -127,7 +131,7 @@ impl OffsetStride {
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OffsetList<S = Vec<u32>, L = Vec<u64>>
+pub struct OffsetList<S, L>
 where
     S: OffsetContainer<u32>,
     L: OffsetContainer<u64>,
@@ -395,7 +399,7 @@ mod tests {
 
     #[test]
     fn test_chonk() {
-        let mut ol = <OffsetList>::default();
+        let mut ol = <OffsetList<Vec<_>, Vec<_>>>::default();
         ol.push(usize::MAX);
         assert_eq!(usize::MAX, ol.index(0));
     }

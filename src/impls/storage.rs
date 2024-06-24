@@ -111,7 +111,7 @@ impl<I: IntoIterator<Item = T>, T> PushStorage<CopyIter<I>> for Vec<T> {
     }
 }
 
-/// TODO
+/// A storage that maintains non-reallocating allocations and allocates double the size when needed.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Doubling<T> {
