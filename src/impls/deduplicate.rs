@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::offsets::{OffsetContainer, OffsetOptimized, OffsetStride};
+use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
 use crate::impls::tuple::TupleABRegion;
 use crate::{Push, Region, ReserveItems};
 
@@ -122,13 +122,12 @@ where
 ///
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
-/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs, Sequential};
+/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
 /// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
 /// let index = r.push(&b"abc");
-/// assert_eq!(index, Sequential(0));
-/// assert_eq!(b"abc", r.index(Sequential(0)));
+/// assert_eq!(b"abc", r.index(index));
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -184,7 +183,7 @@ where
     where
         Self: 'a;
 
-    type Index = Sequential;
+    type Index = usize;
 
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -203,7 +202,7 @@ where
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner
-            .index((self.offsets.index(index.0), self.offsets.index(index.0 + 1)))
+            .index((self.offsets.index(index), self.offsets.index(index + 1)))
     }
 
     #[inline]
@@ -249,7 +248,7 @@ where
         debug_assert_eq!(index.0, self.last_index);
         self.last_index = index.1;
         self.offsets.push(index.1);
-        Sequential(self.offsets.len() - 2)
+        self.offsets.len() - 2
     }
 }
 
@@ -267,50 +266,48 @@ where
 }
 
 /// TODO
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Sequential(pub usize);
-
-/// TODO
 #[derive(Default)]
 pub struct CombineSequential<R, S>(R, S);
 
-impl<A, B, T> Push<T> for CombineSequential<TupleABRegion<A, B>, (OffsetStride, OffsetStride)>
+impl<A, B, T, O1, O2> Push<T> for CombineSequential<TupleABRegion<A, B>, (O1, O2)>
 where
-    A: Region<Index = Sequential>,
-    B: Region<Index = Sequential>,
-    TupleABRegion<A, B>: Region<Index = (Sequential, Sequential)> + Push<T>,
-    Self: Region<Index = Sequential>,
+    A: Region<Index = usize>,
+    B: Region<Index = usize>,
+    O1: OffsetContainer<usize>,
+    O2: OffsetContainer<usize>,
+    TupleABRegion<A, B>: Region<Index = (usize, usize)> + Push<T>,
+    Self: Region<Index = usize>,
 {
     fn push(&mut self, item: T) -> Self::Index {
         let (a, b) = self.0.push(item);
-        let pushed = self.1.0.push(a.0);
-        assert!(pushed, "0 ({:?}).push({a:?})", self.1.0);
-        let pushed = self.1.1.push(b.0);
-        assert!(pushed, "1 ({:?}).push({b:?})", self.1.1);
-        assert_eq!(self.1.0.len(), self.1.1.len());
-        Sequential(self.1.0.len() - 1)
+        self.1 .0.push(a);
+        self.1 .1.push(b);
+        assert_eq!(self.1 .0.len(), self.1 .1.len());
+        self.1 .0.len() - 1
     }
 }
 
-impl<A, B> Region for CombineSequential<TupleABRegion<A, B>, (OffsetStride, OffsetStride)>
+impl<A, B, O1, O2> Region for CombineSequential<TupleABRegion<A, B>, (O1, O2)>
 where
-    A: Region<Index = Sequential>,
-    B: Region<Index = Sequential>,
+    A: Region<Index = usize>,
+    B: Region<Index = usize>,
+    O1: OffsetContainer<usize>,
+    O2: OffsetContainer<usize>,
 {
     type Owned = <TupleABRegion<A, B> as Region>::Owned;
     type ReadItem<'a> = <TupleABRegion<A, B> as Region>::ReadItem<'a>
     where
         Self: 'a;
-    type Index = Sequential;
+    type Index = usize;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
-        Self(<TupleABRegion<A, B> as Region>::merge_regions(
-            regions.map(|r| &r.0),
-        ), Default::default())
+        Self(
+            <TupleABRegion<A, B> as Region>::merge_regions(regions.map(|r| &r.0)),
+            Default::default(),
+        )
     }
 
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {

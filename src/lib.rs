@@ -428,8 +428,8 @@ pub struct CopyIter<I>(pub I);
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs, Sequential};
-    use crate::impls::offsets::OffsetStride;
+    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+    use crate::impls::offsets::OffsetOptimized;
     use crate::impls::tuple::{TupleABRegion, TupleARegion};
 
     use super::*;
@@ -677,43 +677,44 @@ mod tests {
             ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
             ConsecutiveOffsetPairs<OwnedRegion<u8>>,
         >>::default();
-        let _index: (Sequential, Sequential) = r.push(&item);
+        let _index: (usize, usize) = r.push(&item);
 
         let mut r = <CombineSequential<
             TupleABRegion<
                 ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
                 ConsecutiveOffsetPairs<OwnedRegion<u8>>,
             >,
-            (OffsetStride, OffsetStride),
+            (OffsetOptimized, OffsetOptimized),
         >>::default();
-        let _index: Sequential = r.push(&item);
+        let _index: usize = r.push(&item);
 
         let mut fs = FlatStack::<
             CombineSequential<
                 TupleABRegion<
                     ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
-                    // CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
-                    ConsecutiveOffsetPairs<OwnedRegion<u8>>,
+                    CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
                 >,
-                (OffsetStride, OffsetStride),
+                (OffsetOptimized, OffsetOptimized),
             >,
-            OffsetStride,
+            OffsetOptimized,
         >::default();
 
-        for _ in 0..1000 {
-            fs.copy(&item);
+        for item in std::iter::repeat(&item)
+            .take(1000)
+            .chain(std::iter::once(&item2))
+        {
+            fs.copy(item);
             let mut size = 0;
             let mut capacity = 0;
             let mut count = 0;
             fs.heap_size(|siz, cap| {
                 size += siz;
                 capacity += cap;
-                count += 1;
+                count += (cap > 0) as usize
             });
 
             println!("size {size}, capacity {capacity}, allocations {count}");
         }
-        fs.copy(&item2);
         assert_eq!(&item.1, fs.get(0).1);
     }
 

@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::storage::{Storage, PushStorage};
+use crate::impls::storage::{PushStorage, Storage};
 use crate::{CopyIter, Push, Region, ReserveItems};
 
 /// A container for owned types.

@@ -3,7 +3,6 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::deduplicate::Sequential;
 use crate::impls::storage::Storage;
 
 /// A container to store offsets.
@@ -226,53 +225,6 @@ where
     spilled: OffsetList<S, L>,
 }
 
-impl Storage<Sequential> for OffsetStride {
-    fn with_capacity(_capacity: usize) -> Self {
-        Self::default()
-    }
-
-    fn clear(&mut self) {
-        self.clear();
-    }
-
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    fn reserve(&mut self, _additional: usize) {
-        // Nop
-    }
-
-    fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
-        // Nop
-    }
-
-    fn is_empty(&self) -> bool {
-        self.is_empty()
-    }
-}
-
-impl OffsetContainer<Sequential> for OffsetStride {
-    fn index(&self, index: usize) -> Sequential {
-        Sequential(self.index(index))
-    }
-
-    fn push(&mut self, item: Sequential) {
-        let pushed = self.push(item.0);
-        debug_assert!(pushed, "Failed to push {item:?} into {self:?}");
-    }
-
-    fn extend<I: IntoIterator<Item = Sequential>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
-    {
-        for item in iter {
-            let pushed = self.push(item.0);
-            debug_assert!(pushed);
-        }
-    }
-}
-
 impl<S, L> Storage<usize> for OffsetOptimized<S, L>
 where
     S: OffsetContainer<u32>,
@@ -375,7 +327,7 @@ mod tests {
 
         let mut r = SliceRegion::<
             ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>,
-            OffsetStride,
+            OffsetOptimized,
         >::default();
         let idx = copy(&mut r, ["abc"]);
         assert_eq!("abc", r.index(idx).get(0))
