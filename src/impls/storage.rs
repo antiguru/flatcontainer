@@ -3,6 +3,8 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::CopyIter;
+
 /// Behavior to allocate storage
 pub trait Storage<T>: Default {
     /// Allocate storage for at least `capacity` elements.
@@ -33,20 +35,6 @@ pub trait Storage<T>: Default {
 
     /// Observe the heap size information (size and capacity).
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
-
-    /// Extend from iterator. Must be [`ExactSizeIterator`] to efficiently
-    /// pre-allocate.
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator;
-
-    /// Append the contents of `data`.
-    fn append(&mut self, data: &mut Vec<T>);
-
-    /// Extend from the contents of `slice`.
-    fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone;
 
     /// Lookup the slice in range `start..end`.
     fn index(&self, index: usize) -> &T;
@@ -87,24 +75,6 @@ impl<T> Storage<T> for Vec<T> {
     }
 
     #[inline]
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
-        Extend::extend(self, iter);
-    }
-
-    #[inline]
-    fn append(&mut self, data: &mut Vec<T>) {
-        self.append(data);
-    }
-
-    #[inline]
-    fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone,
-    {
-        self.extend_from_slice(slice);
-    }
-
-    #[inline]
     #[must_use]
     fn index(&self, index: usize) -> &T {
         &self[index]
@@ -120,6 +90,33 @@ impl<T> Storage<T> for Vec<T> {
     #[must_use]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+}
+
+/// Push an item into storage.
+pub trait PushStorage<T> {
+    /// Push an item into storage.
+    fn push_storage(&mut self, item: T);
+}
+
+impl<T> PushStorage<&mut Vec<T>> for Vec<T> {
+    #[inline]
+    fn push_storage(&mut self, item: &mut Vec<T>) {
+        self.append(item);
+    }
+}
+
+impl<T: Clone> PushStorage<&[T]> for Vec<T> {
+    #[inline]
+    fn push_storage(&mut self, item: &[T]) {
+        self.extend_from_slice(item);
+    }
+}
+
+impl<I: IntoIterator<Item = T>, T> PushStorage<CopyIter<I>> for Vec<T> {
+    #[inline]
+    fn push_storage(&mut self, item: CopyIter<I>) {
+        self.extend(item.0);
     }
 }
 
@@ -246,30 +243,6 @@ impl<T> Storage<T> for Doubling<T> {
         self.heap_size(callback);
     }
 
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
-    {
-        self.extend(iter);
-    }
-
-    #[inline]
-    fn append(&mut self, data: &mut Vec<T>) {
-        self.len += data.len();
-        self.reserve(data.len());
-        self.inner.last_mut().unwrap().append(data);
-    }
-
-    #[inline]
-    fn extend_from_slice(&mut self, slice: &[T])
-    where
-        T: Clone,
-    {
-        self.len += slice.len();
-        self.reserve(slice.len());
-        self.inner.last_mut().unwrap().extend_from_slice(slice);
-    }
-
     fn index(&self, index: usize) -> &T {
         self.index(index)
     }
@@ -282,6 +255,35 @@ impl<T> Storage<T> for Doubling<T> {
     #[inline]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+}
+
+impl<T, I> PushStorage<CopyIter<I>> for Doubling<T>
+where
+    I: IntoIterator<Item = T>,
+    I::IntoIter: ExactSizeIterator,
+{
+    #[inline]
+    fn push_storage(&mut self, item: CopyIter<I>) {
+        self.extend(item.0);
+    }
+}
+
+impl<T> PushStorage<&mut Vec<T>> for Doubling<T> {
+    #[inline]
+    fn push_storage(&mut self, item: &mut Vec<T>) {
+        self.len += item.len();
+        self.reserve(item.len());
+        self.inner.last_mut().unwrap().append(item);
+    }
+}
+
+impl<T: Clone> PushStorage<&[T]> for Doubling<T> {
+    #[inline]
+    fn push_storage(&mut self, item: &[T]) {
+        self.len += item.len();
+        self.reserve(item.len());
+        self.inner.last_mut().unwrap().extend_from_slice(item);
     }
 }
 
@@ -353,7 +355,7 @@ mod tests {
         let mut start = 0;
 
         for i in 0..1000 {
-            d.extend_from_slice(&[i, i + 1, i + 3]);
+            d.push_storage([i, i + 1, i + 3].as_slice());
             let end = d.len();
             assert_eq!(&[i, i + 1, i + 3], d.index_slice(start, end));
             start = end;
