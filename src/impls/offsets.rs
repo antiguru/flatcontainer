@@ -4,19 +4,12 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::Sequential;
+use crate::impls::storage::AllocateStorage;
 
 /// A container to store offsets.
-pub trait OffsetContainer<T>: Default {
-    /// Allocate with space for `capacity` elements.
-    fn with_capacity(capacity: usize) -> Self;
-
-    /// Allocate storage large enough to absorb `regions`'s contents.
-    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
-    where
-        Self: 'a,
-    {
-        Self::with_capacity(regions.map(Self::len).sum())
-    }
+pub trait OffsetContainer<T>: AllocateStorage<T> {
+    /// Lookup an index. May panic for invalid indexes.
+    fn index(&self, index: usize) -> T;
 
     /// Accepts a newly pushed element.
     fn push(&mut self, item: T);
@@ -26,28 +19,6 @@ pub trait OffsetContainer<T>: Default {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
     where
         I::IntoIter: ExactSizeIterator;
-
-    /// Lookup an index. May panic for invalid indexes.
-    fn index(&self, index: usize) -> T;
-
-    /// Clear all contents.
-    fn clear(&mut self);
-
-    /// Returns the number of elements.
-    fn len(&self) -> usize;
-
-    /// Returns `true` if empty.
-    #[inline]
-    #[must_use]
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Reserve space for `additional` elements.
-    fn reserve(&mut self, additional: usize);
-
-    /// Heap size, size - capacity
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 }
 
 /// A container for offsets that can represent strides of offsets.
@@ -255,28 +226,9 @@ where
     spilled: OffsetList<S, L>,
 }
 
-impl OffsetContainer<Sequential> for OffsetStride {
+impl AllocateStorage<Sequential> for OffsetStride {
     fn with_capacity(_capacity: usize) -> Self {
         Self::default()
-    }
-
-    fn push(&mut self, item: Sequential) {
-        let pushed = self.push(item.0);
-        debug_assert!(pushed);
-    }
-
-    fn extend<I: IntoIterator<Item = Sequential>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
-    {
-        for item in iter {
-            let pushed = self.push(item.0);
-            debug_assert!(pushed);
-        }
-    }
-
-    fn index(&self, index: usize) -> Sequential {
-        self.index(index).into()
     }
 
     fn clear(&mut self) {
@@ -294,9 +246,34 @@ impl OffsetContainer<Sequential> for OffsetStride {
     fn heap_size<F: FnMut(usize, usize)>(&self, _callback: F) {
         // Nop
     }
+
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
 }
 
-impl<S, L> OffsetContainer<usize> for OffsetOptimized<S, L>
+impl OffsetContainer<Sequential> for OffsetStride {
+    fn index(&self, index: usize) -> Sequential {
+        self.index(index).into()
+    }
+
+    fn push(&mut self, item: Sequential) {
+        let pushed = self.push(item.0);
+        debug_assert!(pushed);
+    }
+
+    fn extend<I: IntoIterator<Item = Sequential>>(&mut self, iter: I)
+    where
+        I::IntoIter: ExactSizeIterator,
+    {
+        for item in iter {
+            let pushed = self.push(item.0);
+            debug_assert!(pushed);
+        }
+    }
+}
+
+impl<S, L> AllocateStorage<usize> for OffsetOptimized<S, L>
 where
     S: OffsetContainer<u32>,
     L: OffsetContainer<u64>,
@@ -304,6 +281,43 @@ where
     fn with_capacity(_capacity: usize) -> Self {
         // `self.strided` doesn't have any capacity, and we don't know the structure of the data.
         Self::default()
+    }
+
+    fn clear(&mut self) {
+        self.spilled.clear();
+        self.strided = OffsetStride::default();
+    }
+
+    fn len(&self) -> usize {
+        self.strided.len() + self.spilled.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.strided.is_empty() && self.spilled.is_empty()
+    }
+
+    fn reserve(&mut self, additional: usize) {
+        if !self.spilled.is_empty() {
+            self.spilled.reserve(additional);
+        }
+    }
+
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.spilled.heap_size(callback);
+    }
+}
+
+impl<S, L> OffsetContainer<usize> for OffsetOptimized<S, L>
+where
+    S: OffsetContainer<u32>,
+    L: OffsetContainer<u64>,
+{
+    fn index(&self, index: usize) -> usize {
+        if index < self.strided.len() {
+            self.strided.index(index)
+        } else {
+            self.spilled.index(index - self.strided.len())
+        }
     }
 
     fn push(&mut self, item: usize) {
@@ -325,50 +339,11 @@ where
             self.push(item);
         }
     }
-
-    fn index(&self, index: usize) -> usize {
-        if index < self.strided.len() {
-            self.strided.index(index)
-        } else {
-            self.spilled.index(index - self.strided.len())
-        }
-    }
-
-    fn clear(&mut self) {
-        self.spilled.clear();
-        self.strided = OffsetStride::default();
-    }
-
-    fn len(&self) -> usize {
-        self.strided.len() + self.spilled.len()
-    }
-
-    fn reserve(&mut self, additional: usize) {
-        if !self.spilled.is_empty() {
-            self.spilled.reserve(additional);
-        }
-    }
-
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
-        self.spilled.heap_size(callback);
-    }
-}
-
-impl<S, L> Extend<usize> for OffsetOptimized<S, L>
-where
-    S: OffsetContainer<u32>,
-    L: OffsetContainer<u64>,
-{
-    fn extend<T: IntoIterator<Item = usize>>(&mut self, iter: T) {
-        for item in iter {
-            self.push(item);
-        }
-    }
 }
 
 impl<T: Copy> OffsetContainer<T> for Vec<T> {
-    fn with_capacity(capacity: usize) -> Self {
-        Vec::with_capacity(capacity)
+    fn index(&self, index: usize) -> T {
+        self[index]
     }
 
     #[inline]
@@ -381,33 +356,6 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
         I::IntoIter: ExactSizeIterator,
     {
         Extend::extend(self, iter);
-    }
-
-    #[inline]
-    #[must_use]
-    fn index(&self, index: usize) -> T {
-        self[index]
-    }
-
-    #[inline]
-    fn clear(&mut self) {
-        self.clear();
-    }
-
-    #[inline]
-    #[must_use]
-    fn len(&self) -> usize {
-        self.len()
-    }
-
-    #[inline]
-    fn reserve(&mut self, additional: usize) {
-        self.reserve(additional);
-    }
-
-    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        let size_of_t = std::mem::size_of::<T>();
-        callback(self.len() * size_of_t, self.capacity() * size_of_t);
     }
 }
 

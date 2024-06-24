@@ -6,11 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::CopyIter;
 
 /// Behavior to allocate storage
-pub trait Storage<T>: Default {
+pub trait AllocateStorage<T>: Default {
     /// Allocate storage for at least `capacity` elements.
+    #[must_use]
     fn with_capacity(capacity: usize) -> Self;
 
     /// Allocate storage large enough to absorb `regions`'s contents.
+    #[must_use]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -22,6 +24,7 @@ pub trait Storage<T>: Default {
     fn reserve(&mut self, additional: usize);
 
     /// Reserve space for `regions`.
+    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -36,23 +39,30 @@ pub trait Storage<T>: Default {
     /// Observe the heap size information (size and capacity).
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
 
-    /// Lookup the slice in range `start..end`.
-    fn index(&self, index: usize) -> &T;
-
     /// Returns the number of elements.
+    #[must_use]
     fn len(&self) -> usize;
 
     /// Returns `true` if empty, i.e., it doesn't contain any elements.
+    #[must_use]
     fn is_empty(&self) -> bool;
 }
 
+/// Behavior for storage.
+// TODO: This should really be `std::ops::Index<usize>`.
+pub trait Storage<T>: AllocateStorage<T> {
+    /// Lookup the item at `index`.
+    fn index(&self, index: usize) -> &T;
+}
+
 /// Behavior for slice storage.
-pub trait SliceStorage<T>: Storage<T> {
+// TODO: This should really be `std::ops::Index<Range<usize>>`.
+pub trait SliceStorage<T>: AllocateStorage<T> {
     /// Lookup the slice in range `start..end`.
     fn index_slice(&self, start: usize, end: usize) -> &[T];
 }
 
-impl<T> Storage<T> for Vec<T> {
+impl<T> AllocateStorage<T> for Vec<T> {
     #[inline]
     fn with_capacity(capacity: usize) -> Self {
         Vec::with_capacity(capacity)
@@ -76,12 +86,6 @@ impl<T> Storage<T> for Vec<T> {
 
     #[inline]
     #[must_use]
-    fn index(&self, index: usize) -> &T {
-        &self[index]
-    }
-
-    #[inline]
-    #[must_use]
     fn len(&self) -> usize {
         self.len()
     }
@@ -90,6 +94,14 @@ impl<T> Storage<T> for Vec<T> {
     #[must_use]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+}
+
+impl<T> Storage<T> for Vec<T> {
+    #[inline]
+    #[must_use]
+    fn index(&self, index: usize) -> &T {
+        &self[index]
     }
 }
 
@@ -226,7 +238,7 @@ impl<T> Doubling<T> {
     }
 }
 
-impl<T> Storage<T> for Doubling<T> {
+impl<T> AllocateStorage<T> for Doubling<T> {
     fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity(capacity)
     }
@@ -241,10 +253,6 @@ impl<T> Storage<T> for Doubling<T> {
 
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.heap_size(callback);
-    }
-
-    fn index(&self, index: usize) -> &T {
-        self.index(index)
     }
 
     #[inline]
@@ -306,10 +314,6 @@ mod offsetcontainer {
     use crate::impls::storage::Doubling;
 
     impl<T: Copy> OffsetContainer<T> for Doubling<T> {
-        fn with_capacity(capacity: usize) -> Self {
-            Self::with_capacity(capacity)
-        }
-
         fn push(&mut self, item: T) {
             self.len += 1;
             self.reserve(1);
@@ -325,22 +329,6 @@ mod offsetcontainer {
 
         fn index(&self, index: usize) -> T {
             *self.index(index)
-        }
-
-        fn clear(&mut self) {
-            self.clear()
-        }
-
-        fn len(&self) -> usize {
-            self.len()
-        }
-
-        fn reserve(&mut self, additional: usize) {
-            self.reserve(additional);
-        }
-
-        fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
-            self.heap_size(callback);
         }
     }
 }
