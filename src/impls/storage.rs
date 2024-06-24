@@ -2,6 +2,7 @@
 
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+use std::ops::Range;
 
 use crate::CopyIter;
 
@@ -48,20 +49,6 @@ pub trait AllocateStorage<T>: Default {
     fn is_empty(&self) -> bool;
 }
 
-/// Behavior for storage.
-// TODO: This should really be `std::ops::Index<usize>`.
-pub trait Storage<T>: AllocateStorage<T> {
-    /// Lookup the item at `index`.
-    fn index(&self, index: usize) -> &T;
-}
-
-/// Behavior for slice storage.
-// TODO: This should really be `std::ops::Index<Range<usize>>`.
-pub trait SliceStorage<T>: AllocateStorage<T> {
-    /// Lookup the slice in range `start..end`.
-    fn index_slice(&self, start: usize, end: usize) -> &[T];
-}
-
 impl<T> AllocateStorage<T> for Vec<T> {
     #[inline]
     fn with_capacity(capacity: usize) -> Self {
@@ -97,14 +84,6 @@ impl<T> AllocateStorage<T> for Vec<T> {
     }
 }
 
-impl<T> Storage<T> for Vec<T> {
-    #[inline]
-    #[must_use]
-    fn index(&self, index: usize) -> &T {
-        &self[index]
-    }
-}
-
 /// Push an item into storage.
 pub trait PushStorage<T> {
     /// Push an item into storage.
@@ -129,14 +108,6 @@ impl<I: IntoIterator<Item = T>, T> PushStorage<CopyIter<I>> for Vec<T> {
     #[inline]
     fn push_storage(&mut self, item: CopyIter<I>) {
         self.extend(item.0);
-    }
-}
-
-impl<T> SliceStorage<T> for Vec<T> {
-    #[inline]
-    #[must_use]
-    fn index_slice(&self, start: usize, end: usize) -> &[T] {
-        &self[start..end]
     }
 }
 
@@ -295,16 +266,17 @@ impl<T: Clone> PushStorage<&[T]> for Doubling<T> {
     }
 }
 
-impl<T> SliceStorage<T> for Doubling<T> {
+impl<T> std::ops::Index<Range<usize>> for Doubling<T> {
+    type Output = [T];
     #[inline]
-    fn index_slice(&self, start: usize, end: usize) -> &[T] {
+    fn index(&self, range: Range<usize>) -> &Self::Output {
         let index = self
             .offsets
             .iter()
-            .position(|&o| o > start)
+            .position(|&o| o > range.start)
             .unwrap_or_else(|| self.offsets.len().saturating_sub(1));
-        let start = start - self.offsets[index];
-        let end = end - self.offsets[index];
+        let start = range.start - self.offsets[index];
+        let end = range.end - self.offsets[index];
         &self.inner[index][start..end]
     }
 }
@@ -345,7 +317,7 @@ mod tests {
         for i in 0..1000 {
             d.push_storage([i, i + 1, i + 3].as_slice());
             let end = d.len();
-            assert_eq!(&[i, i + 1, i + 3], d.index_slice(start, end));
+            assert_eq!(&[i, i + 1, i + 3], &d[start..end]);
             start = end;
         }
     }
