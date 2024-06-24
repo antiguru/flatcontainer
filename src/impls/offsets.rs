@@ -259,7 +259,7 @@ impl OffsetContainer<Sequential> for OffsetStride {
 
     fn push(&mut self, item: Sequential) {
         let pushed = self.push(item.0);
-        debug_assert!(pushed);
+        debug_assert!(pushed, "Failed to push {item:?} into {self:?}");
     }
 
     fn extend<I: IntoIterator<Item = Sequential>>(&mut self, iter: I)

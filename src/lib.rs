@@ -669,6 +669,7 @@ mod tests {
     #[test]
     fn test_my_understanding() {
         let item = (vec![1, 2, 3], vec![1, 2, 3]);
+        let item2 = (vec![1, 2, 3, 4], vec![1, 2, 3, 4]);
         let mut r = <TupleABRegion<SliceRegion<MirrorRegion<u8>>, OwnedRegion<u8>>>::default();
         let _index: ((usize, usize), (usize, usize)) = r.push(&item);
 
@@ -683,6 +684,7 @@ mod tests {
                 ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
                 ConsecutiveOffsetPairs<OwnedRegion<u8>>,
             >,
+            (OffsetStride, OffsetStride),
         >>::default();
         let _index: Sequential = r.push(&item);
 
@@ -690,8 +692,10 @@ mod tests {
             CombineSequential<
                 TupleABRegion<
                     ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
+                    // CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
                     ConsecutiveOffsetPairs<OwnedRegion<u8>>,
                 >,
+                (OffsetStride, OffsetStride),
             >,
             OffsetStride,
         >::default();
@@ -709,6 +713,7 @@ mod tests {
 
             println!("size {size}, capacity {capacity}, allocations {count}");
         }
+        fs.copy(&item2);
         assert_eq!(&item.1, fs.get(0).1);
     }
 
