@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::storage::{AllocateStorage, PushStorage};
+use crate::impls::storage::{Storage, PushStorage};
 use crate::{CopyIter, Push, Region, ReserveItems};
 
 /// A container for owned types.
@@ -53,7 +53,7 @@ impl<T, S: Clone> Clone for OwnedRegion<T, S> {
 impl<T, S> Region for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     type Owned = <[T] as ToOwned>::Owned;
     type ReadItem<'a> = &'a [T] where Self: 'a;
@@ -103,7 +103,7 @@ where
     }
 }
 
-impl<T, S: AllocateStorage<T>> Default for OwnedRegion<T, S> {
+impl<T, S: Storage<T>> Default for OwnedRegion<T, S> {
     #[inline]
     fn default() -> Self {
         Self {
@@ -116,7 +116,7 @@ impl<T, S: AllocateStorage<T>> Default for OwnedRegion<T, S> {
 impl<T, S, const N: usize> Push<[T; N]> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<CopyIter<[T; N]>>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -131,7 +131,7 @@ where
 impl<T, S, const N: usize> Push<&[T; N]> for OwnedRegion<T, S>
 where
     T: Clone,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -144,7 +144,7 @@ where
 impl<T, S, const N: usize> Push<&&[T; N]> for OwnedRegion<T, S>
 where
     T: Clone,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -157,7 +157,7 @@ where
 impl<'b, T, S, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T, S>
 where
     T: Clone,
-    S: AllocateStorage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -171,7 +171,7 @@ where
 impl<T, S> Push<&[T]> for OwnedRegion<T, S>
 where
     T: Clone,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -183,7 +183,7 @@ where
     }
 }
 
-impl<T: Clone, S: AllocateStorage<T>> Push<&&[T]> for OwnedRegion<T, S>
+impl<T: Clone, S: Storage<T>> Push<&&[T]> for OwnedRegion<T, S>
 where
     for<'a> Self: Push<&'a [T]>,
 {
@@ -196,7 +196,7 @@ where
 impl<'b, T, S> ReserveItems<&'b [T]> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -210,7 +210,7 @@ where
 impl<T, S> Push<Vec<T>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<&'a mut Vec<T>>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -225,7 +225,7 @@ where
 impl<T, S> Push<&Vec<T>> for OwnedRegion<T, S>
 where
     T: Clone,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -238,7 +238,7 @@ where
 impl<'a, T, S> ReserveItems<&'a Vec<T>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -254,7 +254,7 @@ where
     I: IntoIterator<Item = T>,
     <I as IntoIterator>::IntoIter: ExactSizeIterator,
     T: Clone,
-    S: AllocateStorage<T>
+    S: Storage<T>
         + PushStorage<CopyIter<I>>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
@@ -269,7 +269,7 @@ where
 impl<T, S, J> ReserveItems<CopyIter<J>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
-    S: AllocateStorage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
     J: IntoIterator<Item = T>,
 {
     #[inline]

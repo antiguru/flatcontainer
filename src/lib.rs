@@ -690,7 +690,7 @@ mod tests {
             CombineSequential<
                 TupleABRegion<
                     ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
-                    CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
+                    ConsecutiveOffsetPairs<OwnedRegion<u8>>,
                 >,
             >,
             OffsetStride,

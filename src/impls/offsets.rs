@@ -4,10 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::Sequential;
-use crate::impls::storage::AllocateStorage;
+use crate::impls::storage::Storage;
 
 /// A container to store offsets.
-pub trait OffsetContainer<T>: AllocateStorage<T> {
+pub trait OffsetContainer<T>: Storage<T> {
     /// Lookup an index. May panic for invalid indexes.
     fn index(&self, index: usize) -> T;
 
@@ -226,7 +226,7 @@ where
     spilled: OffsetList<S, L>,
 }
 
-impl AllocateStorage<Sequential> for OffsetStride {
+impl Storage<Sequential> for OffsetStride {
     fn with_capacity(_capacity: usize) -> Self {
         Self::default()
     }
@@ -254,7 +254,7 @@ impl AllocateStorage<Sequential> for OffsetStride {
 
 impl OffsetContainer<Sequential> for OffsetStride {
     fn index(&self, index: usize) -> Sequential {
-        self.index(index).into()
+        Sequential(self.index(index))
     }
 
     fn push(&mut self, item: Sequential) {
@@ -273,7 +273,7 @@ impl OffsetContainer<Sequential> for OffsetStride {
     }
 }
 
-impl<S, L> AllocateStorage<usize> for OffsetOptimized<S, L>
+impl<S, L> Storage<usize> for OffsetOptimized<S, L>
 where
     S: OffsetContainer<u32>,
     L: OffsetContainer<u64>,

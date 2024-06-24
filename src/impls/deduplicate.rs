@@ -122,13 +122,13 @@ where
 ///
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
-/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs, Sequential};
 /// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
 /// let index = r.push(&b"abc");
-/// assert_eq!(index.0, 0);
-/// assert_eq!(b"abc", r.index(0.into()));
+/// assert_eq!(index, Sequential(0));
+/// assert_eq!(b"abc", r.index(Sequential(0)));
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -249,7 +249,7 @@ where
         debug_assert_eq!(index.0, self.last_index);
         self.last_index = index.1;
         self.offsets.push(index.1);
-        (self.offsets.len() - 2).into()
+        Sequential(self.offsets.len() - 2)
     }
 }
 
@@ -271,12 +271,6 @@ where
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Sequential(pub usize);
 
-impl From<usize> for Sequential {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
 /// TODO
 #[derive(Default)]
 pub struct CombineSequential<R>(R);
@@ -289,7 +283,9 @@ where
     CombineSequential<TupleABRegion<A, B>>: Region<Index = Sequential>,
 {
     fn push(&mut self, item: T) -> Self::Index {
-        self.0.push(item).0
+        let (a, b) = self.0.push(item);
+        assert_eq!(a, b);
+        a
     }
 }
 

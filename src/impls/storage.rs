@@ -7,7 +7,7 @@ use std::ops::Range;
 use crate::CopyIter;
 
 /// Behavior to allocate storage
-pub trait AllocateStorage<T>: Default {
+pub trait Storage<T>: Default {
     /// Allocate storage for at least `capacity` elements.
     #[must_use]
     fn with_capacity(capacity: usize) -> Self;
@@ -49,7 +49,7 @@ pub trait AllocateStorage<T>: Default {
     fn is_empty(&self) -> bool;
 }
 
-impl<T> AllocateStorage<T> for Vec<T> {
+impl<T> Storage<T> for Vec<T> {
     #[inline]
     fn with_capacity(capacity: usize) -> Self {
         Vec::with_capacity(capacity)
@@ -209,7 +209,7 @@ impl<T> Doubling<T> {
     }
 }
 
-impl<T> AllocateStorage<T> for Doubling<T> {
+impl<T> Storage<T> for Doubling<T> {
     fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity(capacity)
     }
