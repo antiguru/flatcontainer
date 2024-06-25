@@ -234,6 +234,91 @@ where
     }
 }
 
+mod flatten {
+    use crate::flatten::{Bytes, Entomb, Exhume, FlatWrite, TypedBytes};
+    use crate::{OwnedRegion, Region};
+    use std::ops::Deref;
+
+    impl<T: Copy + 'static> Entomb for OwnedRegion<T> {
+        fn entomb<W: FlatWrite>(&self, write: &mut W) -> std::io::Result<()> {
+            write.write_lengthened(&self.slices)
+        }
+
+        fn flat_size<W: FlatWrite>(&self, offset: &mut usize) {
+            W::lengthened_size(&self.slices, offset);
+        }
+    }
+
+    impl<T: Copy + 'static, S: Clone + Default + Deref<Target = [u8]>> Exhume<S> for OwnedRegion<T> {
+        type Flat = BorrowedRegion<S, T>;
+        fn exhume(bytes: &mut Bytes<S>) -> std::io::Result<Self::Flat> {
+            Ok(BorrowedRegion {
+                bytes: bytes.read_lengthened(),
+            })
+        }
+    }
+
+    /// TODO
+    pub struct BorrowedRegion<S, T> {
+        bytes: TypedBytes<S, T>,
+    }
+
+    impl<S, T> Default for BorrowedRegion<S, T>
+    where
+        S: Default + Deref<Target = [u8]> + Clone,
+    {
+        fn default() -> Self {
+            Self {
+                bytes: TypedBytes::default(),
+            }
+        }
+    }
+
+    impl<S, T> Region for BorrowedRegion<S, T>
+    where
+        S: Deref<Target = [u8]> + Default + Clone,
+        T: Copy + 'static,
+    {
+        type Owned = <[T] as ToOwned>::Owned;
+        type ReadItem<'a> = &'a [T] where Self: 'a;
+        type Index = (usize, usize);
+
+        fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
+        where
+            Self: 'a,
+        {
+            todo!()
+        }
+
+        #[inline]
+        fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
+            &self.bytes.deref()[start..end]
+        }
+
+        fn reserve_regions<'a, I>(&mut self, _regions: I)
+        where
+            Self: 'a,
+            I: Iterator<Item = &'a Self> + Clone,
+        {
+            todo!()
+        }
+
+        fn clear(&mut self) {
+            todo!()
+        }
+
+        fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+            self.bytes.bytes.heap_size(callback);
+        }
+
+        fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+        where
+            Self: 'a,
+        {
+            item
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use crate::{CopyIter, Push, Region, ReserveItems};
