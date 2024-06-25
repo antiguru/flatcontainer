@@ -308,7 +308,7 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-    use crate::{Push, Region, SliceRegion, StringRegion};
+    use crate::{Push, ReadRegion, Region, SliceRegion, StringRegion};
 
     use super::*;
 

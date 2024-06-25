@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Index, IntoOwned, Push, Region, ReserveItems};
+use crate::{Containerized, Index, IntoOwned, Push, ReadRegion, Region, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -19,7 +19,7 @@ use crate::{Containerized, Index, IntoOwned, Push, Region, ReserveItems};
 ///
 /// For [`MirrorRegion`]s, we can index with a copy type:
 /// ```
-/// # use flatcontainer::{MirrorRegion, Region};
+/// # use flatcontainer::{MirrorRegion, ReadRegion, Region};
 /// let r = <MirrorRegion<u8>>::default();
 /// let output: u8 = r.index(42);
 /// assert_eq!(output, 42);
@@ -40,7 +40,7 @@ impl<T> Debug for MirrorRegion<T> {
     }
 }
 
-impl<T> Region for MirrorRegion<T>
+impl<T> ReadRegion for MirrorRegion<T>
 where
     for<'a> T: Index + IntoOwned<'a, Owned = T>,
 {
@@ -49,18 +49,22 @@ where
     type Index = T;
 
     #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        index
+    }
+}
+
+impl<T> Region for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
+    #[inline]
     fn merge_regions<'a>(_regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self::default()
     }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index
-    }
-
     #[inline(always)]
     fn reserve_regions<'a, I>(&mut self, _regions: I)
     where

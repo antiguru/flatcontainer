@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{Containerized, IntoOwned, Push, ReadRegion, Region, ReserveItems};
 
 impl<T: Containerized> Containerized for Option<T> {
     type Region = OptionRegion<T::Region>;
@@ -15,7 +15,7 @@ impl<T: Containerized> Containerized for Option<T> {
 ///
 /// The region can hold options:
 /// ```
-/// # use flatcontainer::{Containerized, Push, OptionRegion, Region};
+/// # use flatcontainer::{Containerized, Push, OptionRegion, ReadRegion, Region};
 /// let mut r = <OptionRegion<<u8 as Containerized>::Region>>::default();
 ///
 /// let some_index = r.push(Some(123));
@@ -43,11 +43,18 @@ impl<R: Clone> Clone for OptionRegion<R> {
     }
 }
 
-impl<R: Region> Region for OptionRegion<R> {
+impl<R: ReadRegion> ReadRegion for OptionRegion<R> {
     type Owned = Option<R::Owned>;
-    type ReadItem<'a> = Option<<R as Region>::ReadItem<'a>> where Self: 'a;
+    type ReadItem<'a> = Option<<R as ReadRegion>::ReadItem<'a>> where Self: 'a;
     type Index = Option<R::Index>;
 
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        index.map(|t| self.inner.index(t))
+    }
+}
+
+impl<R: Region> Region for OptionRegion<R> {
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -56,11 +63,6 @@ impl<R: Region> Region for OptionRegion<R> {
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index.map(|t| self.inner.index(t))
     }
 
     #[inline]
@@ -122,7 +124,7 @@ where
     TR: Region + Push<T>,
 {
     #[inline]
-    fn push(&mut self, item: Option<T>) -> <OptionRegion<TR> as Region>::Index {
+    fn push(&mut self, item: Option<T>) -> <OptionRegion<TR> as ReadRegion>::Index {
         item.map(|t| self.inner.push(t))
     }
 }
@@ -132,7 +134,7 @@ where
     TR: Region + Push<&'a T>,
 {
     #[inline]
-    fn push(&mut self, item: &'a Option<T>) -> <OptionRegion<TR> as Region>::Index {
+    fn push(&mut self, item: &'a Option<T>) -> <OptionRegion<TR> as ReadRegion>::Index {
         item.as_ref().map(|t| self.inner.push(t))
     }
 }

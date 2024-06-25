@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CopyIter, Push, Region, ReserveItems};
+use crate::{CopyIter, Push, ReadRegion, Region, ReserveItems};
 
 /// A container for owned types.
 ///
@@ -15,7 +15,7 @@ use crate::{CopyIter, Push, Region, ReserveItems};
 /// # Examples
 ///
 /// ```
-/// use flatcontainer::{Push, OwnedRegion, Region};
+/// use flatcontainer::{Push, OwnedRegion,ReadRegion,  Region};
 /// let mut r = <OwnedRegion<_>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -45,7 +45,7 @@ impl<T: Clone> Clone for OwnedRegion<T> {
     }
 }
 
-impl<T> Region for OwnedRegion<T>
+impl<T> ReadRegion for OwnedRegion<T>
 where
     [T]: ToOwned,
 {
@@ -54,6 +54,16 @@ where
     type Index = (usize, usize);
 
     #[inline]
+    fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
+        &self.slices[start..end]
+    }
+}
+
+impl<T> Region for OwnedRegion<T>
+where
+    [T]: ToOwned,
+{
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -61,11 +71,6 @@ where
         Self {
             slices: Vec::with_capacity(regions.map(|r| r.slices.len()).sum()),
         }
-    }
-
-    #[inline]
-    fn index(&self, (start, end): Self::Index) -> Self::ReadItem<'_> {
-        &self.slices[start..end]
     }
 
     #[inline]
@@ -114,7 +119,7 @@ where
     [T]: ToOwned,
 {
     #[inline]
-    fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as ReadRegion>::Index {
         let start = self.slices.len();
         self.slices.extend(item);
         (start, self.slices.len())
@@ -123,7 +128,7 @@ where
 
 impl<T: Clone, const N: usize> Push<&[T; N]> for OwnedRegion<T> {
     #[inline]
-    fn push(&mut self, item: &[T; N]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &[T; N]) -> <OwnedRegion<T> as ReadRegion>::Index {
         let start = self.slices.len();
         self.slices.extend_from_slice(item);
         (start, self.slices.len())
@@ -132,7 +137,7 @@ impl<T: Clone, const N: usize> Push<&[T; N]> for OwnedRegion<T> {
 
 impl<T: Clone, const N: usize> Push<&&[T; N]> for OwnedRegion<T> {
     #[inline]
-    fn push(&mut self, item: &&[T; N]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &&[T; N]) -> <OwnedRegion<T> as ReadRegion>::Index {
         self.push(*item)
     }
 }
@@ -149,7 +154,7 @@ impl<'b, T: Clone, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T> {
 
 impl<T: Clone> Push<&[T]> for OwnedRegion<T> {
     #[inline]
-    fn push(&mut self, item: &[T]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &[T]) -> <OwnedRegion<T> as ReadRegion>::Index {
         let start = self.slices.len();
         self.slices.extend_from_slice(item);
         (start, self.slices.len())
@@ -161,7 +166,7 @@ where
     for<'a> Self: Push<&'a [T]>,
 {
     #[inline]
-    fn push(&mut self, item: &&[T]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &&[T]) -> <OwnedRegion<T> as ReadRegion>::Index {
         self.push(*item)
     }
 }
@@ -184,7 +189,7 @@ where
     [T]: ToOwned,
 {
     #[inline]
-    fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T> as ReadRegion>::Index {
         let start = self.slices.len();
         self.slices.append(&mut item);
         (start, self.slices.len())
@@ -193,7 +198,7 @@ where
 
 impl<T: Clone> Push<&Vec<T>> for OwnedRegion<T> {
     #[inline]
-    fn push(&mut self, item: &Vec<T>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &Vec<T>) -> <OwnedRegion<T> as ReadRegion>::Index {
         self.push(item.as_slice())
     }
 }
@@ -213,7 +218,7 @@ where
 
 impl<T: Clone, I: IntoIterator<Item = T>> Push<CopyIter<I>> for OwnedRegion<T> {
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: CopyIter<I>) -> <OwnedRegion<T> as ReadRegion>::Index {
         let start = self.slices.len();
         self.slices.extend(item.0);
         (start, self.slices.len())
@@ -236,7 +241,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyIter, Push, Region, ReserveItems};
+    use crate::{CopyIter, Push, ReadRegion, ReserveItems};
 
     use super::*;
 

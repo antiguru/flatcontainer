@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Containerized, Push, ReadRegion, Region, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -18,7 +18,7 @@ use crate::{Containerized, Push, Region, ReserveItems};
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{Containerized, Push, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{Containerized, Push, OwnedRegion, ReadRegion, Region, StringRegion};
 /// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -48,14 +48,25 @@ impl<R: Clone> Clone for StringRegion<R> {
     }
 }
 
-impl<R> Region for StringRegion<R>
+impl<R> ReadRegion for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
 {
     type Owned = String;
     type ReadItem<'a> = &'a str where Self: 'a ;
     type Index = R::Index;
 
+    #[inline]
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        // SAFETY: All Push implementations only accept correct utf8 data
+        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
+    }
+}
+
+impl<R> Region for StringRegion<R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+{
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -64,12 +75,6 @@ where
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        // SAFETY: All Push implementations only accept correct utf8 data
-        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
     }
 
     #[inline]
@@ -113,7 +118,7 @@ where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: String) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: String) -> <StringRegion<R> as ReadRegion>::Index {
         self.push(item.as_str())
     }
 }
@@ -123,7 +128,7 @@ where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: &String) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &String) -> <StringRegion<R> as ReadRegion>::Index {
         self.push(item.as_str())
     }
 }
@@ -146,7 +151,7 @@ where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: &str) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &str) -> <StringRegion<R> as ReadRegion>::Index {
         self.inner.push(item.as_bytes())
     }
 }
@@ -156,7 +161,7 @@ where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: &&str) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &&str) -> <StringRegion<R> as ReadRegion>::Index {
         self.push(*item)
     }
 }
@@ -189,7 +194,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{IntoOwned, Push, Region, ReserveItems, StringRegion};
+    use crate::{IntoOwned, Push, ReadRegion, Region, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {

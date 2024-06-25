@@ -1,21 +1,25 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Push, Region, ReserveItems};
+use crate::{Push, ReadRegion, Region, ReserveItems};
 
-impl<T: Clone> Region for Vec<T> {
+impl<T: Clone> ReadRegion for Vec<T> {
     type Owned = T;
-    type ReadItem<'a> = &'a T where Self: 'a;
+    type ReadItem<'a> = &'a T
+    where
+        Self: 'a;
     type Index = usize;
 
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        &self[index]
+    }
+}
+
+impl<T: Clone> Region for Vec<T> {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self::with_capacity(regions.map(Vec::len).sum())
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        &self[index]
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -77,7 +81,7 @@ impl<T: Clone, D> ReserveItems<D> for Vec<T> {
 mod tests {
     #[test]
     fn vec() {
-        use crate::{Push, Region, ReserveItems};
+        use crate::{Push, ReadRegion, ReserveItems};
 
         let mut region = Vec::<u32>::new();
         let index = <_ as Push<_>>::push(&mut region, 42);

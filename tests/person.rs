@@ -1,6 +1,6 @@
 //! Test a slightly more struct with nested regions, representing people.
 
-use flatcontainer::{Containerized, FlatStack, IntoOwned, Push, Region, ReserveItems};
+use flatcontainer::{Containerized, FlatStack, IntoOwned, Push, ReadRegion, Region, ReserveItems};
 
 struct Person {
     name: String,
@@ -21,9 +21,9 @@ struct PersonRegion {
 
 #[derive(Debug, Clone, Copy)]
 struct PersonRef<'a> {
-    name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
-    age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
-    hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
+    name: <<String as Containerized>::Region as ReadRegion>::ReadItem<'a>,
+    age: <<u16 as Containerized>::Region as ReadRegion>::ReadItem<'a>,
+    hobbies: <<Vec<String> as Containerized>::Region as ReadRegion>::ReadItem<'a>,
 }
 
 impl<'a> IntoOwned<'a> for PersonRef<'a> {
@@ -52,15 +52,27 @@ impl<'a> IntoOwned<'a> for PersonRef<'a> {
     }
 }
 
-impl Region for PersonRegion {
+impl ReadRegion for PersonRegion {
     type Owned = Person;
-    type ReadItem<'a> = PersonRef<'a> where Self: 'a;
+    type ReadItem<'a> = PersonRef<'a>
+    where
+        Self: 'a;
     type Index = (
-        <<String as Containerized>::Region as Region>::Index,
-        <<u16 as Containerized>::Region as Region>::Index,
-        <<Vec<String> as Containerized>::Region as Region>::Index,
+        <<String as Containerized>::Region as ReadRegion>::Index,
+        <<u16 as Containerized>::Region as ReadRegion>::Index,
+        <<Vec<String> as Containerized>::Region as ReadRegion>::Index,
     );
 
+    fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
+        PersonRef {
+            name: self.name_container.index(name),
+            age: self.age_container.index(age),
+            hobbies: self.hobbies.index(hobbies),
+        }
+    }
+}
+
+impl Region for PersonRegion {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -75,14 +87,6 @@ impl Region for PersonRegion {
             hobbies: <Vec<String> as Containerized>::Region::merge_regions(
                 regions.map(|r| &r.hobbies),
             ),
-        }
-    }
-
-    fn index(&self, (name, age, hobbies): Self::Index) -> Self::ReadItem<'_> {
-        PersonRef {
-            name: self.name_container.index(name),
-            age: self.age_container.index(age),
-            hobbies: self.hobbies.index(hobbies),
         }
     }
 
@@ -124,7 +128,7 @@ impl Region for PersonRegion {
 }
 
 impl Push<&Person> for PersonRegion {
-    fn push(&mut self, item: &Person) -> <PersonRegion as Region>::Index {
+    fn push(&mut self, item: &Person) -> <PersonRegion as ReadRegion>::Index {
         let name = self.name_container.push(&item.name);
         let age = self.age_container.push(item.age);
         let hobbies = self.hobbies.push(&item.hobbies);
@@ -146,7 +150,7 @@ impl<'a> ReserveItems<&'a Person> for PersonRegion {
 }
 
 impl Push<PersonRef<'_>> for PersonRegion {
-    fn push(&mut self, item: PersonRef<'_>) -> <PersonRegion as Region>::Index {
+    fn push(&mut self, item: PersonRef<'_>) -> <PersonRegion as ReadRegion>::Index {
         let name = self.name_container.push(item.name);
         let age = self.age_container.push(item.age);
         let hobbies = self.hobbies.push(item.hobbies);

@@ -8,8 +8,8 @@ use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs
 use flatcontainer::impls::offsets::OffsetOptimized;
 use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
-    ColumnsRegion, Containerized, FlatStack, MirrorRegion, OwnedRegion, Push, Region, ReserveItems,
-    SliceRegion, StringRegion,
+    ColumnsRegion, Containerized, FlatStack, MirrorRegion, OwnedRegion, Push, ReadRegion, Region,
+    ReserveItems, SliceRegion, StringRegion,
 };
 use test::Bencher;
 
@@ -482,14 +482,14 @@ fn _bench_copy_flat_containerized<T>(bencher: &mut Bencher, record: T)
 where
     T: Containerized,
     for<'a> <T as Containerized>::Region:
-        Push<&'a T> + Push<<<T as Containerized>::Region as Region>::ReadItem<'a>> + Clone,
+        Push<&'a T> + Push<<<T as Containerized>::Region as ReadRegion>::ReadItem<'a>> + Clone,
 {
     _bench_copy_flat::<T::Region, T>(bencher, record)
 }
 
 fn _bench_copy_flat<R, T>(bencher: &mut Bencher, record: T)
 where
-    for<'a> R: Region + Push<&'a T> + Push<<R as Region>::ReadItem<'a>> + Clone,
+    for<'a> R: Region + Push<&'a T> + Push<<R as ReadRegion>::ReadItem<'a>> + Clone,
 {
     // prepare encoded data for bencher.bytes
     let mut arena = FlatStack::<R>::default();

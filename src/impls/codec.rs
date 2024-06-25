@@ -1,6 +1,6 @@
 //! A region that encodes its contents.
 
-use crate::{OwnedRegion, Push, Region};
+use crate::{OwnedRegion, Push, ReadRegion, Region};
 
 pub use self::misra_gries::MisraGries;
 pub use dictionary::DictionaryCodec;
@@ -81,17 +81,26 @@ impl<C: Clone, R: Clone> Clone for CodecRegion<C, R> {
     }
 }
 
+impl<C: Codec, R> ReadRegion for CodecRegion<C, R>
+where
+    for<'a> R: ReadRegion<ReadItem<'a> = &'a [u8]> + 'a,
+{
+    type Owned = Vec<u8>;
+    type ReadItem<'a> = &'a [u8]
+        where
+            Self: 'a;
+
+    type Index = R::Index;
+
+    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
+        self.codec.decode(self.inner.index(index))
+    }
+}
+
 impl<C: Codec, R> Region for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
 {
-    type Owned = Vec<u8>;
-    type ReadItem<'a> = &'a [u8]
-    where
-        Self: 'a;
-
-    type Index = R::Index;
-
     /// Construct a region that can absorb the contents of `regions` in the future.
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -102,10 +111,6 @@ where
             inner: R::merge_regions(regions.map(|r| &r.inner)),
             codec,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.codec.decode(self.inner.index(index))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -138,7 +143,7 @@ impl<C: Codec, R> Push<&[u8]> for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
-    fn push(&mut self, item: &[u8]) -> <CodecRegion<C, R> as Region>::Index {
+    fn push(&mut self, item: &[u8]) -> <CodecRegion<C, R> as ReadRegion>::Index {
         self.codec.encode(item, &mut self.inner)
     }
 }
