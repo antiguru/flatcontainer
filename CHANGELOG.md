@@ -6,6 +6,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0](https://github.com/antiguru/flatcontainer/compare/v0.4.1...v0.5.0) - 2024-06-26
+
+### Other
+- Rename Containerized to RegionPreference and add owned type ([#47](https://github.com/antiguru/flatcontainer/pull/47))
+- Use vectors as regions ([#46](https://github.com/antiguru/flatcontainer/pull/46))
+- Efficient cloning of regions and flat stack ([#45](https://github.com/antiguru/flatcontainer/pull/45))
+- Use OffsetOptimized in consecutive offset pairs ([#43](https://github.com/antiguru/flatcontainer/pull/43))
+- Add reserve items to consecutive offset pairs ([#42](https://github.com/antiguru/flatcontainer/pull/42))
+- Improve GatCow test ([#41](https://github.com/antiguru/flatcontainer/pull/41))
+
 ## [0.4.1](https://github.com/antiguru/flatcontainer/compare/v0.4.0...v0.4.1) - 2024-06-17
 
 ### Other
