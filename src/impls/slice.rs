@@ -8,17 +8,20 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::OffsetContainer;
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
-impl<T: Containerized> Containerized for Vec<T> {
+impl<T: RegionPreference> RegionPreference for Vec<T> {
+    type Owned = Vec<T::Owned>;
     type Region = SliceRegion<T::Region>;
 }
 
-impl<T: Containerized> Containerized for [T] {
+impl<T: RegionPreference> RegionPreference for [T] {
+    type Owned = Vec<T::Owned>;
     type Region = SliceRegion<T::Region>;
 }
 
-impl<T: Containerized, const N: usize> Containerized for [T; N] {
+impl<T: RegionPreference, const N: usize> RegionPreference for [T; N] {
+    type Owned = Vec<T::Owned>;
     type Region = SliceRegion<T::Region>;
 }
 
@@ -33,8 +36,8 @@ impl<T: Containerized, const N: usize> Containerized for [T; N] {
 ///
 /// We fill some data into a slice region and use the [`ReadSlice`] to extract it later.
 /// ```
-/// use flatcontainer::{Containerized, Push, Region, SliceRegion};
-/// let mut r = <SliceRegion<<String as Containerized>::Region>>::default();
+/// use flatcontainer::{RegionPreference, Push, Region, SliceRegion};
+/// let mut r = <SliceRegion<<String as RegionPreference>::Region>>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog"
 ///     .split(" ")

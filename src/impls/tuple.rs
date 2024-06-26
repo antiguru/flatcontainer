@@ -4,13 +4,14 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
     ($($name:ident)+) => (
         paste! {
-            impl<$($name: Containerized),*> Containerized for ($($name,)*) {
+            impl<$($name: RegionPreference),*> RegionPreference for ($($name,)*) {
+                type Owned = ($($name::Owned,)*);
                 type Region = [<Tuple $($name)* Region >]<$($name::Region,)*>;
             }
 

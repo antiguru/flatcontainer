@@ -1,6 +1,6 @@
 //! Test a slightly more struct with nested regions, representing people.
 
-use flatcontainer::{Containerized, FlatStack, IntoOwned, Push, Region, ReserveItems};
+use flatcontainer::{FlatStack, IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
 struct Person {
     name: String,
@@ -8,22 +8,23 @@ struct Person {
     hobbies: Vec<String>,
 }
 
-impl Containerized for Person {
+impl RegionPreference for Person {
+    type Owned = Self;
     type Region = PersonRegion;
 }
 
 #[derive(Default)]
 struct PersonRegion {
-    name_container: <String as Containerized>::Region,
-    age_container: <u16 as Containerized>::Region,
-    hobbies: <Vec<String> as Containerized>::Region,
+    name_container: <String as RegionPreference>::Region,
+    age_container: <u16 as RegionPreference>::Region,
+    hobbies: <Vec<String> as RegionPreference>::Region,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct PersonRef<'a> {
-    name: <<String as Containerized>::Region as Region>::ReadItem<'a>,
-    age: <<u16 as Containerized>::Region as Region>::ReadItem<'a>,
-    hobbies: <<Vec<String> as Containerized>::Region as Region>::ReadItem<'a>,
+    name: <<String as RegionPreference>::Region as Region>::ReadItem<'a>,
+    age: <<u16 as RegionPreference>::Region as Region>::ReadItem<'a>,
+    hobbies: <<Vec<String> as RegionPreference>::Region as Region>::ReadItem<'a>,
 }
 
 impl<'a> IntoOwned<'a> for PersonRef<'a> {
@@ -56,9 +57,9 @@ impl Region for PersonRegion {
     type Owned = Person;
     type ReadItem<'a> = PersonRef<'a> where Self: 'a;
     type Index = (
-        <<String as Containerized>::Region as Region>::Index,
-        <<u16 as Containerized>::Region as Region>::Index,
-        <<Vec<String> as Containerized>::Region as Region>::Index,
+        <<String as RegionPreference>::Region as Region>::Index,
+        <<u16 as RegionPreference>::Region as Region>::Index,
+        <<Vec<String> as RegionPreference>::Region as Region>::Index,
     );
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
@@ -66,13 +67,13 @@ impl Region for PersonRegion {
         Self: 'a,
     {
         Self {
-            name_container: <String as Containerized>::Region::merge_regions(
+            name_container: <String as RegionPreference>::Region::merge_regions(
                 regions.clone().map(|r| &r.name_container),
             ),
-            age_container: <u16 as Containerized>::Region::merge_regions(
+            age_container: <u16 as RegionPreference>::Region::merge_regions(
                 regions.clone().map(|r| &r.age_container),
             ),
-            hobbies: <Vec<String> as Containerized>::Region::merge_regions(
+            hobbies: <Vec<String> as RegionPreference>::Region::merge_regions(
                 regions.map(|r| &r.hobbies),
             ),
         }
@@ -116,9 +117,9 @@ impl Region for PersonRegion {
         Self: 'a,
     {
         PersonRef {
-            name: <String as Containerized>::Region::reborrow(item.name),
-            age: <u16 as Containerized>::Region::reborrow(item.age),
-            hobbies: <Vec<String> as Containerized>::Region::reborrow(item.hobbies),
+            name: <String as RegionPreference>::Region::reborrow(item.name),
+            age: <u16 as RegionPreference>::Region::reborrow(item.age),
+            hobbies: <Vec<String> as RegionPreference>::Region::reborrow(item.hobbies),
         }
     }
 }

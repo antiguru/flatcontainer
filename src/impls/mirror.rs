@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, Index, IntoOwned, Push, Region, ReserveItems};
+use crate::{Index, IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -147,7 +147,8 @@ where
 
 macro_rules! implement_for {
     ($index_type:ty) => {
-        impl Containerized for $index_type {
+        impl RegionPreference for $index_type {
+            type Owned = Self;
             type Region = MirrorRegion<Self>;
         }
 

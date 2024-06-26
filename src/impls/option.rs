@@ -3,9 +3,10 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
-impl<T: Containerized> Containerized for Option<T> {
+impl<T: RegionPreference> RegionPreference for Option<T> {
+    type Owned = Option<T::Owned>;
     type Region = OptionRegion<T::Region>;
 }
 
@@ -15,8 +16,8 @@ impl<T: Containerized> Containerized for Option<T> {
 ///
 /// The region can hold options:
 /// ```
-/// # use flatcontainer::{Containerized, Push, OptionRegion, Region};
-/// let mut r = <OptionRegion<<u8 as Containerized>::Region>>::default();
+/// # use flatcontainer::{RegionPreference, Push, OptionRegion, Region};
+/// let mut r = <OptionRegion<<u8 as RegionPreference>::Region>>::default();
 ///
 /// let some_index = r.push(Some(123));
 /// // Type annotations required for `None`:
