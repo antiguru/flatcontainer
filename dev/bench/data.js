@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719171062273,
+  "lastUpdate": 1719435474495,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5147,6 +5147,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 51548385.7,
             "range": "± 1418767.30",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "66ed92c0867fb2c451a60840d312dc549c0b435c",
+          "message": "Rename Containerized to RegionPreference and add owned type (#47)\n\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-06-26T16:54:08-04:00",
+          "tree_id": "047c51ec711cd06c92eff75bc665c8f009fe61d0",
+          "url": "https://github.com/antiguru/flatcontainer/commit/66ed92c0867fb2c451a60840d312dc549c0b435c"
+        },
+        "date": 1719435474038,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 955.67,
+            "range": "± 7.65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 378461.65,
+            "range": "± 13203.45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 33201818.5,
+            "range": "± 213070.73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16605336.4,
+            "range": "± 412663.73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 198114.23,
+            "range": "± 4475.20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 207764.7,
+            "range": "± 4227.93",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 209120.74,
+            "range": "± 3660.01",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 48154667.1,
+            "range": "± 1019475.83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 52890656.4,
+            "range": "± 925760.44",
             "unit": "ns/iter"
           }
         ]
