@@ -82,10 +82,25 @@ pub trait Region: Default {
         Self: 'a;
 }
 
-/// A trait to let types express a default container type.
-pub trait Containerized {
+/// A trait to let types express a default container type and an owned type, which can
+/// be used to define regions in simpler terms.
+///
+/// # Example
+///
+/// ```
+/// # use flatcontainer::{FlatStack, RegionPreference};
+/// let _ = FlatStack::<<((Vec<String>, &[usize]), Option<String>, Result<u8, u16>) as RegionPreference>::Region>::default();
+/// ```
+pub trait RegionPreference {
+    /// The owned type of the region.
+    type Owned;
     /// The recommended container type.
-    type Region: Region;
+    type Region: Region<Owned = Self::Owned>;
+}
+
+impl<T: RegionPreference + ?Sized> RegionPreference for &T {
+    type Owned = T::Owned;
+    type Region = T::Region;
 }
 
 /// Push an item `T` into a region.
@@ -179,7 +194,7 @@ impl<R: Region> FlatStack<R> {
     /// Default implementation based on the preference of type `T`.
     #[inline]
     #[must_use]
-    pub fn default_impl<T: Containerized<Region = R>>() -> Self {
+    pub fn default_impl<T: RegionPreference<Region = R>>() -> Self {
         Self::default()
     }
 
@@ -531,8 +546,8 @@ mod tests {
         test_copy::<_, OwnedRegion<_>>([0u8].as_slice());
         test_copy::<_, OwnedRegion<_>>(&[0u8].as_slice());
 
-        test_copy::<_, <(u8, u8) as Containerized>::Region>((1, 2));
-        test_copy::<_, <(u8, u8) as Containerized>::Region>(&(1, 2));
+        test_copy::<_, <(u8, u8) as RegionPreference>::Region>((1, 2));
+        test_copy::<_, <(u8, u8) as RegionPreference>::Region>(&(1, 2));
 
         test_copy::<_, ConsecutiveOffsetPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
 

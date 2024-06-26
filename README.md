@@ -57,7 +57,7 @@ writing down all values.
 
 All region implementations should be considered examples on how to implement specific
 regions that are tailored to the needs of the type, and characteristics of the data
-encountered in practice. This crate provides a [`Containerized`] trait to let types
+encountered in practice. This crate provides a [`RegionPreference`] trait to let types
 express their suggested region, but users can select a different region, as long as
 it is compatible with the types to be stored. For example, a vector suggests to use
 a slice-based region, but a client might know that the inner type is copy, and hence

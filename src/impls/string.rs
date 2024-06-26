@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_copy::OwnedRegion;
-use crate::{Containerized, Push, Region, ReserveItems};
+use crate::{Push, Region, RegionPreference, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -18,7 +18,7 @@ use crate::{Containerized, Push, Region, ReserveItems};
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{Containerized, Push, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{RegionPreference, Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -100,11 +100,13 @@ where
     }
 }
 
-impl Containerized for String {
+impl RegionPreference for String {
+    type Owned = Self;
     type Region = StringRegion;
 }
 
-impl Containerized for &str {
+impl RegionPreference for &str {
+    type Owned = String;
     type Region = StringRegion;
 }
 

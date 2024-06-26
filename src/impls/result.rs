@@ -3,9 +3,10 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Containerized, IntoOwned, Push, Region, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
-impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
+impl<T: RegionPreference, E: RegionPreference> RegionPreference for Result<T, E> {
+    type Owned = Result<T::Owned, E::Owned>;
     type Region = ResultRegion<T::Region, E::Region>;
 }
 
@@ -15,9 +16,9 @@ impl<T: Containerized, E: Containerized> Containerized for Result<T, E> {
 ///
 /// Add results to a result region:
 /// ```
-/// use flatcontainer::{Containerized, Push, Region, ResultRegion};
+/// use flatcontainer::{RegionPreference, Push, Region, ResultRegion};
 /// let mut r =
-///     <ResultRegion<<() as Containerized>::Region, <String as Containerized>::Region>>::default();
+///     <ResultRegion<<() as RegionPreference>::Region, <String as RegionPreference>::Region>>::default();
 ///
 /// let ok_index = r.push(Result::<(), String>::Ok(()));
 /// let err_index = r.push(Result::<(), String>::Err("Error".to_string()));
