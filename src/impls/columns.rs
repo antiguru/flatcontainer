@@ -8,7 +8,7 @@ use std::slice::Iter;
 use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-use crate::impls::offsets::OffsetOptimized;
+use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
 use crate::{CopyIter, IntoOwned};
 use crate::{OwnedRegion, Push, Region};
 
@@ -54,24 +54,27 @@ use crate::{OwnedRegion, Push, Region};
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",
-    serde(
-        bound = "R: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
-    )
+    serde(bound = "
+            R: Serialize + for<'a> Deserialize<'a>,
+            R::Index: Serialize + for<'a> Deserialize<'a>,
+            O: Serialize + for<'a> Deserialize<'a>,
+            ")
 )]
-pub struct ColumnsRegion<R>
+pub struct ColumnsRegion<R, O = OffsetOptimized>
 where
     R: Region,
 {
     /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
-    indices: ConsecutiveOffsetPairs<OwnedRegion<R::Index>, OffsetOptimized>,
+    indices: ConsecutiveOffsetPairs<OwnedRegion<R::Index>, O>,
     /// Storage for columns.
     inner: Vec<R>,
 }
 
-impl<R> Clone for ColumnsRegion<R>
+impl<R, O> Clone for ColumnsRegion<R, O>
 where
     R: Region + Clone,
+    O: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -86,9 +89,10 @@ where
     }
 }
 
-impl<R> Region for ColumnsRegion<R>
+impl<R, O> Region for ColumnsRegion<R, O>
 where
     R: Region,
+    O: OffsetContainer<usize>,
 {
     type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
@@ -162,9 +166,10 @@ where
     }
 }
 
-impl<R> Default for ColumnsRegion<R>
+impl<R, O> Default for ColumnsRegion<R, O>
 where
     R: Region,
+    O: OffsetContainer<usize>,
 {
     fn default() -> Self {
         Self {
@@ -368,11 +373,12 @@ where
     }
 }
 
-impl<R> Push<ReadColumns<'_, R>> for ColumnsRegion<R>
+impl<R, O> Push<ReadColumns<'_, R>> for ColumnsRegion<R, O>
 where
     for<'a> R: Region + Push<<R as Region>::ReadItem<'a>>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -386,11 +392,12 @@ where
     }
 }
 
-impl<'a, R, T> Push<&'a [T]> for ColumnsRegion<R>
+impl<'a, R, O, T> Push<&'a [T]> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -404,11 +411,12 @@ where
     }
 }
 
-impl<R, T, const N: usize> Push<[T; N]> for ColumnsRegion<R>
+impl<R, O, T, const N: usize> Push<[T; N]> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -422,11 +430,12 @@ where
     }
 }
 
-impl<'a, R, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R>
+impl<'a, R, O, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -440,11 +449,12 @@ where
     }
 }
 
-impl<R, T> Push<Vec<T>> for ColumnsRegion<R>
+impl<R, O, T> Push<Vec<T>> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -458,11 +468,12 @@ where
     }
 }
 
-impl<'a, R, T> Push<&'a Vec<T>> for ColumnsRegion<R>
+impl<'a, R, O, T> Push<&'a Vec<T>> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
+    O: OffsetContainer<usize>,
 {
-    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
@@ -476,14 +487,15 @@ where
     }
 }
 
-impl<R, T, I> Push<CopyIter<I>> for ColumnsRegion<R>
+impl<R, O, T, I> Push<CopyIter<I>> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
+    O: OffsetContainer<usize>,
     I: IntoIterator<Item = T>,
     I::IntoIter: ExactSizeIterator,
 {
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R> as Region>::Index {
+    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R, O> as Region>::Index {
         let iter = item.0.into_iter().enumerate().map(|(index, value)| {
             // Ensure all required regions exist.
             if self.inner.len() <= index {
