@@ -164,18 +164,17 @@ impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
     feature = "serde",
     serde(bound = "
             R: Serialize + for<'a> Deserialize<'a>,
-            R::Index: Serialize + for<'a> Deserialize<'a>,
             S: Serialize + for<'a> Deserialize<'a>,
             ")
 )]
-pub struct FlatStack<R: Region, S: OffsetContainer<R::Index> = Vec<<R as Region>::Index>> {
+pub struct FlatStack<R, S = Vec<<R as Region>::Index>> {
     /// The indices, which we use to lookup items in the region.
     indices: S,
     /// A region to index into.
     region: R,
 }
 
-impl<R: Region, S: OffsetContainer<<R as Region>::Index>> Default for FlatStack<R, S> {
+impl<R: Default, S: Default> Default for FlatStack<R, S> {
     #[inline]
     fn default() -> Self {
         Self {
@@ -319,8 +318,10 @@ impl<R: Region> FlatStack<R> {
     }
 }
 
-impl<T, R: Region + Push<T>, S: OffsetContainer<<R as Region>::Index>> Extend<T>
-    for FlatStack<R, S>
+impl<T, R, S> Extend<T> for FlatStack<R, S>
+where
+    R: Region + Push<T>,
+    S: OffsetContainer<<R as Region>::Index>,
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
@@ -395,7 +396,11 @@ where
     }
 }
 
-impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
+impl<R, S, T> FromIterator<T> for FlatStack<R, S>
+where
+    R: Region + Push<T>,
+    S: OffsetContainer<<R as Region>::Index>,
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
         let mut c = Self::with_capacity(iter.size_hint().0);
@@ -404,7 +409,7 @@ impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
     }
 }
 
-impl<R: Region + Clone> Clone for FlatStack<R> {
+impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
     fn clone(&self) -> Self {
         Self {
             region: self.region.clone(),
@@ -496,7 +501,7 @@ mod tests {
             // Make sure that types are debug, even if we don't use this in the test.
             for<'a> R::ReadItem<'a>: Debug,
         {
-            let mut c = FlatStack::default();
+            let mut c = FlatStack::<_>::default();
             c.copy(t);
 
             let mut cc = c.clone();
