@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719435474495,
+  "lastUpdate": 1719590771194,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5225,6 +5225,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 52890656.4,
             "range": "± 925760.44",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "41898282+github-actions[bot]@users.noreply.github.com",
+            "name": "github-actions[bot]",
+            "username": "github-actions[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "2a7a15d62c50966adcf6dc9c2713ad5ed3aeecc4",
+          "message": "chore: release v0.5.0 (#44)\n\nCo-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+          "timestamp": "2024-06-28T12:02:27-04:00",
+          "tree_id": "9565619f13ec4d24a59b8c8a1639fb72c1c72748",
+          "url": "https://github.com/antiguru/flatcontainer/commit/2a7a15d62c50966adcf6dc9c2713ad5ed3aeecc4"
+        },
+        "date": 1719590770357,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 960.06,
+            "range": "± 20.22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 436712.55,
+            "range": "± 63568.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 33010935.6,
+            "range": "± 711364.32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16269862.6,
+            "range": "± 589476.83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 235213.94,
+            "range": "± 5016.12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 237345.08,
+            "range": "± 7439.63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 253018.2,
+            "range": "± 3599.27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 47999351.5,
+            "range": "± 1218460.02",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 53617320.6,
+            "range": "± 1215964.72",
             "unit": "ns/iter"
           }
         ]
