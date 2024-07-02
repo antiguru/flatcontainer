@@ -8,7 +8,7 @@ use crate::impls::storage::Storage;
 /// A container to store offsets.
 pub trait OffsetContainer<T>: Storage<T> {
     /// Iterator over the elements.
-    type Iter<'a>: Iterator<Item = T>
+    type Iter<'a>: Iterator<Item = T> + Clone
     where
         Self: 'a;
 
@@ -152,6 +152,7 @@ impl OffsetStride {
 }
 
 /// An iterator over the elements of an [`OffsetStride`].
+#[derive(Clone, Copy)]
 pub struct OffsetStrideIter {
     strided: OffsetStride,
     index: usize,
@@ -305,7 +306,7 @@ where
     S: OffsetContainer<u32>,
     L: OffsetContainer<u64>,
 {
-    type Iter<'a> = OffsetListIter<'a, S, L> where Self: 'a;
+    type Iter<'a> = OffsetListIter<S::Iter<'a>, L::Iter<'a>> where Self: 'a;
 
     #[inline]
     fn index(&self, index: usize) -> usize {
@@ -337,19 +338,16 @@ where
 }
 
 /// An iterator over the elements of an [`OffsetList`].
-pub struct OffsetListIter<'a, S, L>
-where
-    S: OffsetContainer<u32> + 'a,
-    L: OffsetContainer<u64> + 'a,
-{
-    smol: S::Iter<'a>,
-    chonk: L::Iter<'a>,
+#[derive(Clone, Copy)]
+pub struct OffsetListIter<S, L> {
+    smol: S,
+    chonk: L,
 }
 
-impl<'a, S, L> Iterator for OffsetListIter<'a, S, L>
+impl<S, L> Iterator for OffsetListIter<S, L>
 where
-    S: OffsetContainer<u32> + 'a,
-    L: OffsetContainer<u64> + 'a,
+    S: Iterator<Item = u32>,
+    L: Iterator<Item = u64>,
 {
     type Item = usize;
 
@@ -366,11 +364,7 @@ where
 /// a regular offset list.
 #[derive(Eq, PartialEq, Default, Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OffsetOptimized<S = Vec<u32>, L = Vec<u64>>
-where
-    S: OffsetContainer<u32>,
-    L: OffsetContainer<u64>,
-{
+pub struct OffsetOptimized<S = Vec<u32>, L = Vec<u64>> {
     strided: OffsetStride,
     spilled: OffsetList<S, L>,
 }
@@ -420,7 +414,7 @@ where
     S: OffsetContainer<u32>,
     L: OffsetContainer<u64>,
 {
-    type Iter<'a> = OffsetOptimizedIter<'a, S , L> where Self: 'a;
+    type Iter<'a> = OffsetOptimizedIter<S::Iter<'a>, L::Iter<'a>> where Self: 'a;
 
     fn index(&self, index: usize) -> usize {
         if index < self.strided.len() {
@@ -459,19 +453,16 @@ where
 }
 
 /// An iterator over the elements of an [`OffsetOptimized`].
-pub struct OffsetOptimizedIter<'a, S, L>
-where
-    S: OffsetContainer<u32> + 'a,
-    L: OffsetContainer<u64> + 'a,
-{
+#[derive(Clone, Copy)]
+pub struct OffsetOptimizedIter<S, L> {
     strided: OffsetStrideIter,
-    spilled: <OffsetList<S, L> as OffsetContainer<usize>>::Iter<'a>,
+    spilled: OffsetListIter<S, L>,
 }
 
-impl<'a, S, L> Iterator for OffsetOptimizedIter<'a, S, L>
+impl<S, L> Iterator for OffsetOptimizedIter<S, L>
 where
-    S: OffsetContainer<u32> + 'a,
-    L: OffsetContainer<u64> + 'a,
+    S: Iterator<Item = u32>,
+    L: Iterator<Item = u64>,
 {
     type Item = usize;
 
