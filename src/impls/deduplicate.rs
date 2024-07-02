@@ -4,7 +4,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
-use crate::impls::tuple::TupleABRegion;
 use crate::{Push, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
@@ -262,79 +261,6 @@ where
         I: Iterator<Item = T> + Clone,
     {
         self.inner.reserve_items(items);
-    }
-}
-
-/// TODO
-#[derive(Default)]
-pub struct CombineSequential<R, S>(R, S);
-
-impl<A, B, T, O1, O2> Push<T> for CombineSequential<TupleABRegion<A, B>, (O1, O2)>
-where
-    A: Region<Index = usize>,
-    B: Region<Index = usize>,
-    O1: OffsetContainer<usize>,
-    O2: OffsetContainer<usize>,
-    TupleABRegion<A, B>: Region<Index = (usize, usize)> + Push<T>,
-    Self: Region<Index = usize>,
-{
-    fn push(&mut self, item: T) -> Self::Index {
-        let (a, b) = self.0.push(item);
-        self.1 .0.push(a);
-        self.1 .1.push(b);
-        assert_eq!(self.1 .0.len(), self.1 .1.len());
-        self.1 .0.len() - 1
-    }
-}
-
-impl<A, B, O1, O2> Region for CombineSequential<TupleABRegion<A, B>, (O1, O2)>
-where
-    A: Region<Index = usize>,
-    B: Region<Index = usize>,
-    O1: OffsetContainer<usize>,
-    O2: OffsetContainer<usize>,
-{
-    type Owned = <TupleABRegion<A, B> as Region>::Owned;
-    type ReadItem<'a> = <TupleABRegion<A, B> as Region>::ReadItem<'a>
-    where
-        Self: 'a;
-    type Index = usize;
-
-    fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
-    where
-        Self: 'a,
-    {
-        Self(
-            <TupleABRegion<A, B> as Region>::merge_regions(regions.map(|r| &r.0)),
-            Default::default(),
-        )
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        self.0.index((index, index))
-    }
-
-    fn reserve_regions<'a, I>(&mut self, regions: I)
-    where
-        Self: 'a,
-        I: Iterator<Item = &'a Self> + Clone,
-    {
-        self.0.reserve_regions(regions.map(|r| &r.0));
-    }
-
-    fn clear(&mut self) {
-        self.0.clear()
-    }
-
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
-        self.0.heap_size(callback)
-    }
-
-    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
-    where
-        Self: 'a,
-    {
-        <TupleABRegion<A, B> as Region>::reborrow(item)
     }
 }
 

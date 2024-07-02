@@ -11,7 +11,6 @@ pub mod impls;
 
 use crate::impls::offsets::OffsetContainer;
 pub use impls::columns::ColumnsRegion;
-pub use impls::deduplicate::CombineSequential;
 pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
@@ -434,8 +433,7 @@ pub struct CopyIter<I>(pub I);
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::impls::offsets::OffsetOptimized;
-    use crate::impls::tuple::{TupleABRegion, TupleARegion};
+    use crate::impls::tuple::{TupleARegion};
 
     use super::*;
 
@@ -669,59 +667,6 @@ mod tests {
         let mut c = <StringRegion>::default();
         let index = c.push("abc".to_string());
         owned_roundtrip::<StringRegion, String>(&mut c, index);
-    }
-
-    #[test]
-    fn test_my_understanding() {
-        let item = (vec![1, 2, 3], vec![1, 2, 3]);
-        let item2 = (vec![1, 2, 3, 4], vec![1, 2, 3, 4]);
-        let mut r = <TupleABRegion<SliceRegion<MirrorRegion<u8>>, OwnedRegion<u8>>>::default();
-        let _index: ((usize, usize), (usize, usize)) = r.push(&item);
-
-        let mut r = <TupleABRegion<
-            ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
-            ConsecutiveOffsetPairs<OwnedRegion<u8>>,
-        >>::default();
-        let _index: (usize, usize) = r.push(&item);
-
-        let mut r = <CombineSequential<
-            TupleABRegion<
-                ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
-                ConsecutiveOffsetPairs<OwnedRegion<u8>>,
-            >,
-            (OffsetOptimized, OffsetOptimized),
-        >>::default();
-        let _index: usize = r.push(&item);
-
-        let mut fs = FlatStack::<
-            CombineSequential<
-                TupleABRegion<
-                    ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
-                    CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
-                >,
-                (OffsetOptimized, OffsetOptimized),
-            >,
-            OffsetOptimized,
-        >::default();
-
-        for item in std::iter::repeat(&item)
-            .take(1000)
-            .chain(std::iter::once(&item2))
-        {
-            fs.copy(item);
-            let mut size = 0;
-            let mut capacity = 0;
-            let mut count = 0;
-            fs.heap_size(|siz, cap| {
-                size += siz;
-                capacity += cap;
-                count += (cap > 0) as usize
-            });
-
-            println!("size {size}, capacity {capacity}, allocations {count}");
-        }
-        println!("fs size {}", std::mem::size_of_val(&fs));
-        assert_eq!(&item.1, fs.get(0).1);
     }
 
     /// Test that items and owned variants can be reborrowed to shorten their lifetimes.

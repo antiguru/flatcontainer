@@ -511,7 +511,6 @@ impl<T: Copy> OffsetContainer<T> for Vec<T> {
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-    use crate::impls::storage::Doubling;
     use crate::{Push, Region, SliceRegion, StringRegion};
 
     use super::*;
@@ -602,13 +601,5 @@ mod tests {
     fn test_offset_stride_index() {
         let os = OffsetStride::default();
         let _ = os.index(0);
-    }
-
-    #[test]
-    fn test_offset_optimized_doubling() {
-        let mut oo = <OffsetOptimized<Doubling<_>, Doubling<_>>>::default();
-        oo.push(9999999999);
-        assert_eq!(oo.len(), 1);
-        oo.reserve(1);
     }
 }
