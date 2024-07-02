@@ -2,7 +2,11 @@
 
 use crate::CopyIter;
 
-/// Behavior to allocate storage
+/// Behavior to allocate storage.
+///
+/// This trait does not express opinions on how to populate itself and how to extract data. Clients
+/// should use the [`PushStorage`] trait to insert data into storage, and appropriate
+/// [`Index`](std::ops::Index) bounds to extract data.
 pub trait Storage<T>: Default {
     /// Allocate storage for at least `capacity` elements.
     #[must_use]
