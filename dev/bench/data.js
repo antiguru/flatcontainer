@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719941023279,
+  "lastUpdate": 1719941534046,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5381,6 +5381,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 52267356.9,
             "range": "± 1846327.31",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "484b57e6a854a169c4499ec66784f6e80884d556",
+          "message": "Rename CopyIter to PushIter (#50)\n\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-07-02T13:27:10-04:00",
+          "tree_id": "6f79f3fec484a8cda8dd70c210cb1097b5837cdc",
+          "url": "https://github.com/antiguru/flatcontainer/commit/484b57e6a854a169c4499ec66784f6e80884d556"
+        },
+        "date": 1719941533751,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 1013.23,
+            "range": "± 17.36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 394768.28,
+            "range": "± 8642.68",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 32748387.2,
+            "range": "± 510205.89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16386624.3,
+            "range": "± 406688.70",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 219582.8,
+            "range": "± 4923.52",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 267350.27,
+            "range": "± 5131.65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 264792.62,
+            "range": "± 6921.26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 48475370.1,
+            "range": "± 1201065.25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 52518859.6,
+            "range": "± 1117186.25",
             "unit": "ns/iter"
           }
         ]
