@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::ConsecutiveOffsetPairs;
 use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
-use crate::{CopyIter, IntoOwned};
+use crate::{IntoOwned, PushIter};
 use crate::{OwnedRegion, Push, Region};
 
 /// A region that can store a variable number of elements per row.
@@ -388,7 +388,7 @@ where
             .iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
@@ -407,7 +407,7 @@ where
             .iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
@@ -426,7 +426,7 @@ where
             .into_iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
@@ -445,7 +445,7 @@ where
             .iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
@@ -464,7 +464,7 @@ where
             .into_iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
@@ -483,11 +483,11 @@ where
             .iter()
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
-impl<R, O, T, I> Push<CopyIter<I>> for ColumnsRegion<R, O>
+impl<R, O, T, I> Push<PushIter<I>> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
     O: OffsetContainer<usize>,
@@ -495,7 +495,7 @@ where
     I::IntoIter: ExactSizeIterator,
 {
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: PushIter<I>) -> <ColumnsRegion<R, O> as Region>::Index {
         let iter = item.0.into_iter().enumerate().map(|(index, value)| {
             // Ensure all required regions exist.
             if self.inner.len() <= index {
@@ -503,14 +503,14 @@ where
             }
             self.inner[index].push(value)
         });
-        self.indices.push(CopyIter(iter))
+        self.indices.push(PushIter(iter))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::{CopyIter, MirrorRegion, OwnedRegion, Push, Region, StringRegion};
+    use crate::{MirrorRegion, OwnedRegion, Push, PushIter, Region, StringRegion};
 
     use super::*;
 
@@ -634,7 +634,7 @@ mod tests {
         let mut indices = Vec::with_capacity(data.len());
 
         for row in &data {
-            let index = r.push(CopyIter(row.iter()));
+            let index = r.push(PushIter(row.iter()));
             indices.push(index);
         }
 
@@ -716,7 +716,7 @@ mod tests {
         let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
 
         for row in &data {
-            let _ = r.push(CopyIter(row.iter()));
+            let _ = r.push(PushIter(row.iter()));
         }
 
         let (mut siz1, mut cap1) = (0, 0);
@@ -727,7 +727,7 @@ mod tests {
 
         let mut r2 = ColumnsRegion::merge_regions(std::iter::once(&r));
         for row in &data {
-            let _ = r2.push(CopyIter(row.iter()));
+            let _ = r2.push(PushIter(row.iter()));
         }
 
         let (mut siz2, mut cap2) = (0, 0);
