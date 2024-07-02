@@ -15,7 +15,7 @@ pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
-pub use impls::slice_copy::OwnedRegion;
+pub use impls::slice_owned::OwnedRegion;
 pub use impls::string::StringRegion;
 
 /// An index into a region. Automatically implemented for relevant types.
