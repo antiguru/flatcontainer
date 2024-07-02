@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::slice_copy::OwnedRegion;
+use crate::impls::slice_owned::OwnedRegion;
 use crate::{Push, Region, RegionPreference, ReserveItems};
 
 /// A region to store strings and read `&str`.
