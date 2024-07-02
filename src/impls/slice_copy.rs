@@ -1,8 +1,11 @@
 //! A region that stores slices of copy types.
 
+use std::marker::PhantomData;
+
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
+use crate::impls::storage::{PushStorage, Storage};
 use crate::{CopyIter, Push, Region, ReserveItems};
 
 /// A container for owned types.
@@ -29,14 +32,16 @@ use crate::{CopyIter, Push, Region, ReserveItems};
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OwnedRegion<T> {
-    slices: Vec<T>,
+pub struct OwnedRegion<T, S = Vec<T>> {
+    slices: S,
+    _marker: PhantomData<T>,
 }
 
-impl<T: Clone> Clone for OwnedRegion<T> {
+impl<T, S: Clone> Clone for OwnedRegion<T, S> {
     fn clone(&self) -> Self {
         Self {
             slices: self.slices.clone(),
+            _marker: PhantomData,
         }
     }
 
@@ -45,9 +50,10 @@ impl<T: Clone> Clone for OwnedRegion<T> {
     }
 }
 
-impl<T> Region for OwnedRegion<T>
+impl<T, S> Region for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     type Owned = <[T] as ToOwned>::Owned;
     type ReadItem<'a> = &'a [T] where Self: 'a;
@@ -59,7 +65,8 @@ where
         Self: 'a,
     {
         Self {
-            slices: Vec::with_capacity(regions.map(|r| r.slices.len()).sum()),
+            slices: S::merge_regions(regions.map(|r| &r.slices)),
+            _marker: PhantomData,
         }
     }
 
@@ -74,7 +81,7 @@ where
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
     {
-        self.slices.reserve(regions.map(|r| r.slices.len()).sum());
+        self.slices.reserve_regions(regions.map(|r| &r.slices));
     }
 
     #[inline]
@@ -83,12 +90,8 @@ where
     }
 
     #[inline]
-    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        let size_of_t = std::mem::size_of::<T>();
-        callback(
-            self.slices.len() * size_of_t,
-            self.slices.capacity() * size_of_t,
-        );
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.slices.heap_size(callback);
     }
 
     #[inline]
@@ -100,44 +103,62 @@ where
     }
 }
 
-impl<T> Default for OwnedRegion<T> {
+impl<T, S: Storage<T>> Default for OwnedRegion<T, S> {
     #[inline]
     fn default() -> Self {
         Self {
-            slices: Vec::default(),
+            slices: S::default(),
+            _marker: PhantomData,
         }
     }
 }
 
-impl<T, const N: usize> Push<[T; N]> for OwnedRegion<T>
+impl<T, S, const N: usize> Push<[T; N]> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T>
+        + for<'a> PushStorage<CopyIter<[T; N]>>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
-        self.slices.extend(item);
+        self.slices.push_storage(CopyIter(item));
         (start, self.slices.len())
     }
 }
 
-impl<T: Clone, const N: usize> Push<&[T; N]> for OwnedRegion<T> {
+impl<T, S, const N: usize> Push<&[T; N]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
     fn push(&mut self, item: &[T; N]) -> <OwnedRegion<T> as Region>::Index {
-        let start = self.slices.len();
-        self.slices.extend_from_slice(item);
-        (start, self.slices.len())
+        self.push(item.as_slice())
     }
 }
 
-impl<T: Clone, const N: usize> Push<&&[T; N]> for OwnedRegion<T> {
+impl<T, S, const N: usize> Push<&&[T; N]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
     fn push(&mut self, item: &&[T; N]) -> <OwnedRegion<T> as Region>::Index {
         self.push(*item)
     }
 }
 
-impl<'b, T: Clone, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T> {
+impl<'b, T, S, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
@@ -147,28 +168,35 @@ impl<'b, T: Clone, const N: usize> ReserveItems<&'b [T; N]> for OwnedRegion<T> {
     }
 }
 
-impl<T: Clone> Push<&[T]> for OwnedRegion<T> {
+impl<T, S> Push<&[T]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
-    fn push(&mut self, item: &[T]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &[T]) -> <OwnedRegion<T, S> as Region>::Index {
         let start = self.slices.len();
-        self.slices.extend_from_slice(item);
+        self.slices.push_storage(item);
         (start, self.slices.len())
     }
 }
 
-impl<T: Clone> Push<&&[T]> for OwnedRegion<T>
+impl<T: Clone, S: Storage<T>> Push<&&[T]> for OwnedRegion<T, S>
 where
     for<'a> Self: Push<&'a [T]>,
 {
     #[inline]
-    fn push(&mut self, item: &&[T]) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &&[T]) -> <OwnedRegion<T, S> as Region>::Index {
         self.push(*item)
     }
 }
 
-impl<'b, T> ReserveItems<&'b [T]> for OwnedRegion<T>
+impl<'b, T, S> ReserveItems<&'b [T]> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -179,28 +207,38 @@ where
     }
 }
 
-impl<T> Push<Vec<T>> for OwnedRegion<T>
+impl<T, S> Push<Vec<T>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a mut Vec<T>>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
-    fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, mut item: Vec<T>) -> <OwnedRegion<T, S> as Region>::Index {
         let start = self.slices.len();
-        self.slices.append(&mut item);
+        self.slices.push_storage(&mut item);
         (start, self.slices.len())
     }
 }
 
-impl<T: Clone> Push<&Vec<T>> for OwnedRegion<T> {
+impl<T, S> Push<&Vec<T>> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
-    fn push(&mut self, item: &Vec<T>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: &Vec<T>) -> <OwnedRegion<T, S> as Region>::Index {
         self.push(item.as_slice())
     }
 }
 
-impl<'a, T> ReserveItems<&'a Vec<T>> for OwnedRegion<T>
+impl<'a, T, S> ReserveItems<&'a Vec<T>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -211,18 +249,28 @@ where
     }
 }
 
-impl<T: Clone, I: IntoIterator<Item = T>> Push<CopyIter<I>> for OwnedRegion<T> {
+impl<T, S, I> Push<CopyIter<I>> for OwnedRegion<T, S>
+where
+    I: IntoIterator<Item = T>,
+    <I as IntoIterator>::IntoIter: ExactSizeIterator,
+    T: Clone,
+    S: Storage<T>
+        + PushStorage<CopyIter<I>>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <OwnedRegion<T> as Region>::Index {
+    fn push(&mut self, item: CopyIter<I>) -> <OwnedRegion<T, S> as Region>::Index {
         let start = self.slices.len();
-        self.slices.extend(item.0);
+        self.slices.push_storage(item);
         (start, self.slices.len())
     }
 }
 
-impl<T, J: IntoIterator<Item = T>> ReserveItems<CopyIter<J>> for OwnedRegion<T>
+impl<T, S, J> ReserveItems<CopyIter<J>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
+    S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+    J: IntoIterator<Item = T>,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -269,8 +317,9 @@ mod tests {
     #[test]
     fn test_copy_iter() {
         let mut r = <OwnedRegion<u8>>::default();
-        r.reserve_items(std::iter::once(CopyIter(std::iter::repeat(1).take(4))));
-        let index = r.push(CopyIter(std::iter::repeat(1).take(4)));
+        let iter = [1; 4].into_iter();
+        r.reserve_items(std::iter::once(CopyIter(iter.clone())));
+        let index = r.push(CopyIter(iter));
         assert_eq!([1, 1, 1, 1], r.index(index));
     }
 }

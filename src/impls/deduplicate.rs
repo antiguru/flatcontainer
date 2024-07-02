@@ -125,7 +125,7 @@ where
 /// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
 /// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
 ///
-/// let index: usize = r.push(&b"abc");
+/// let index = r.push(&b"abc");
 /// assert_eq!(b"abc", r.index(index));
 /// ```
 #[derive(Debug)]
