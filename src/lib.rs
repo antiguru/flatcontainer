@@ -186,10 +186,9 @@ impl<R: Default, S: Default> Default for FlatStack<R, S> {
 impl<R: Region, S: OffsetContainer<<R as Region>::Index>> Debug for FlatStack<R, S>
 where
     for<'a> R::ReadItem<'a>: Debug,
-    for<'a> &'a S: IntoIterator<Item = &'a R::Index>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_list().entries(self.iter()).finish()
+        f.debug_list().entries(self).finish()
     }
 }
 
@@ -294,10 +293,7 @@ where
 {
     /// Iterate the items in this stack.
     #[inline]
-    pub fn iter<'a>(&'a self) -> Iter<'a, R, <&'a S as IntoIterator>::IntoIter>
-    where
-        &'a S: IntoIterator<Item = &'a R::Index>,
-    {
+    pub fn iter(&self) -> Iter<R, S::Iter<'_>> {
         self.into_iter()
     }
 }
@@ -331,16 +327,13 @@ where
     }
 }
 
-impl<'a, R: Region, S: OffsetContainer<<R as Region>::Index>> IntoIterator for &'a FlatStack<R, S>
-where
-    &'a S: IntoIterator<Item = &'a <R as Region>::Index>,
-{
+impl<'a, R: Region, S: OffsetContainer<<R as Region>::Index>> IntoIterator for &'a FlatStack<R, S> {
     type Item = R::ReadItem<'a>;
-    type IntoIter = Iter<'a, R, <&'a S as IntoIterator>::IntoIter>;
+    type IntoIter = Iter<'a, R, S::Iter<'a>>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            inner: self.indices.into_iter(),
+            inner: self.indices.iter(),
             region: &self.region,
         }
     }
@@ -351,7 +344,6 @@ where
 pub struct Iter<'a, R, S>
 where
     R: Region,
-    S: Iterator<Item = &'a <R as Region>::Index>,
 {
     /// Iterator over indices.
     inner: S,
@@ -362,12 +354,12 @@ where
 impl<'a, R, S> Iterator for Iter<'a, R, S>
 where
     R: Region,
-    S: Iterator<Item = &'a <R as Region>::Index>,
+    S: Iterator<Item = <R as Region>::Index>,
 {
     type Item = R::ReadItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|idx| self.region.index(*idx))
+        self.inner.next().map(|idx| self.region.index(idx))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -378,14 +370,14 @@ where
 impl<'a, R, S> ExactSizeIterator for Iter<'a, R, S>
 where
     R: Region,
-    S: ExactSizeIterator<Item = &'a <R as Region>::Index>,
+    S: ExactSizeIterator<Item = <R as Region>::Index>,
 {
 }
 
 impl<'a, R, S> Clone for Iter<'a, R, S>
 where
     R: Region,
-    S: Iterator<Item = &'a <R as Region>::Index> + Clone,
+    S: Iterator<Item = <R as Region>::Index> + Clone,
 {
     fn clone(&self) -> Self {
         Self {
