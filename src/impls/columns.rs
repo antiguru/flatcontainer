@@ -527,7 +527,7 @@ mod tests {
             indices.push(index);
         }
 
-        for (&index, row) in indices.iter().zip(&data) {
+        for (index, row) in indices.iter().zip(&data) {
             assert!(row.iter().copied().eq(r.index(index).iter()));
         }
     }
@@ -553,7 +553,7 @@ mod tests {
             indices.push(index);
         }
 
-        for (&index, row) in indices.iter().zip(&data) {
+        for (index, row) in indices.iter().zip(&data) {
             assert!(row.iter().copied().eq(r.index(index).iter()));
         }
 
@@ -582,7 +582,7 @@ mod tests {
             indices.push(index);
         }
 
-        for (&index, row) in indices.iter().zip(&data) {
+        for (index, row) in indices.iter().zip(&data) {
             assert!(row.iter().eq(r.index(index).iter()));
         }
 
@@ -610,8 +610,8 @@ mod tests {
             indices.push(index);
         }
 
-        for (&index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().copied().eq(r.index(index).iter()));
+        for (index, row) in indices.iter().zip(&data) {
+            assert!(row.iter().eq(r.index(index).iter()));
         }
 
         println!("{r:?}");
@@ -638,8 +638,8 @@ mod tests {
             indices.push(index);
         }
 
-        for (&index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().copied().eq(r.index(index).iter()));
+        for (index, row) in indices.iter().zip(&data) {
+            assert!(row.iter().eq(r.index(index).iter()));
         }
 
         assert_eq!("1", r.index(indices[1]).get(0));

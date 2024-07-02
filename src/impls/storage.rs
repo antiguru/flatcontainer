@@ -14,6 +14,7 @@ pub trait Storage<T>: Default {
 
     /// Allocate storage large enough to absorb `regions`'s contents.
     #[must_use]
+    #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -112,6 +113,8 @@ impl<I: IntoIterator<Item = T>, T> PushStorage<CopyIter<I>> for Vec<T> {
 }
 
 /// A storage that maintains non-reallocating allocations and allocates double the size when needed.
+///
+/// Not considered part of the stable interface of this crate.
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Doubling<T> {
@@ -210,18 +213,22 @@ impl<T> Doubling<T> {
 }
 
 impl<T> Storage<T> for Doubling<T> {
+    #[inline]
     fn with_capacity(capacity: usize) -> Self {
         Self::with_capacity(capacity)
     }
 
+    #[inline]
     fn reserve(&mut self, additional: usize) {
         self.reserve(additional);
     }
 
+    #[inline]
     fn clear(&mut self) {
         self.clear()
     }
 
+    #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.heap_size(callback);
     }
@@ -281,11 +288,39 @@ impl<T> std::ops::Index<Range<usize>> for Doubling<T> {
     }
 }
 
+/// An iterator over the elements of a [`Doubling`].
+pub struct DoublingIter<'a, T: 'a> {
+    inner: Option<std::iter::Copied<std::slice::Iter<'a, T>>>,
+    remaining: std::slice::Iter<'a, Vec<T>>,
+}
+
+impl<'a, T: Copy> Iterator for DoublingIter<'a, T> {
+    type Item = T;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(inner) = &mut self.inner {
+                if let Some(item) = inner.next() {
+                    return Some(item);
+                }
+            }
+            self.inner = self
+                .remaining
+                .next()
+                .map(|vec| vec.as_slice().iter().copied());
+            self.inner.as_ref()?;
+        }
+    }
+}
+
 mod offsetcontainer {
     use crate::impls::offsets::OffsetContainer;
-    use crate::impls::storage::Doubling;
+    use crate::impls::storage::{Doubling, DoublingIter};
 
     impl<T: Copy> OffsetContainer<T> for Doubling<T> {
+        type Iter<'a> = DoublingIter<'a, T> where Self: 'a;
+
         fn push(&mut self, item: T) {
             self.len += 1;
             self.reserve(1);
@@ -301,6 +336,14 @@ mod offsetcontainer {
 
         fn index(&self, index: usize) -> T {
             *self.index(index)
+        }
+
+        fn iter(&self) -> Self::Iter<'_> {
+            let mut iter = self.inner.as_slice().iter();
+            DoublingIter {
+                inner: iter.next().map(|vec| vec.as_slice().iter().copied()),
+                remaining: iter,
+            }
         }
     }
 }
