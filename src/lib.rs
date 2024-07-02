@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 
 pub mod impls;
 
+use crate::impls::offsets::OffsetContainer;
 pub use impls::columns::ColumnsRegion;
+pub use impls::deduplicate::CombineSequential;
 pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
@@ -160,51 +162,46 @@ impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
     feature = "serde",
-    serde(
-        bound = "R: Serialize + for<'a> Deserialize<'a>, R::Index: Serialize + for<'a> Deserialize<'a>"
-    )
+    serde(bound = "
+            R: Serialize + for<'a> Deserialize<'a>,
+            S: Serialize + for<'a> Deserialize<'a>,
+            ")
 )]
-pub struct FlatStack<R: Region> {
+pub struct FlatStack<R, S = Vec<<R as Region>::Index>> {
     /// The indices, which we use to lookup items in the region.
-    indices: Vec<R::Index>,
+    indices: S,
     /// A region to index into.
     region: R,
 }
 
-impl<R: Region> Default for FlatStack<R> {
+impl<R: Default, S: Default> Default for FlatStack<R, S> {
     #[inline]
     fn default() -> Self {
         Self {
-            indices: Vec::default(),
+            indices: S::default(),
             region: R::default(),
         }
     }
 }
 
-impl<R: Region> Debug for FlatStack<R>
+impl<R: Region, S: OffsetContainer<<R as Region>::Index>> Debug for FlatStack<R, S>
 where
     for<'a> R::ReadItem<'a>: Debug,
+    for<'a> &'a S: IntoIterator<Item = &'a R::Index>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter()).finish()
     }
 }
 
-impl<R: Region> FlatStack<R> {
-    /// Default implementation based on the preference of type `T`.
-    #[inline]
-    #[must_use]
-    pub fn default_impl<T: RegionPreference<Region = R>>() -> Self {
-        Self::default()
-    }
-
+impl<R: Region, S: OffsetContainer<<R as Region>::Index>> FlatStack<R, S> {
     /// Returns a flat stack that can absorb `capacity` indices without reallocation.
     ///
     /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
-            indices: Vec::with_capacity(capacity),
+            indices: S::with_capacity(capacity),
             region: R::default(),
         }
     }
@@ -213,10 +210,10 @@ impl<R: Region> FlatStack<R> {
     #[must_use]
     pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
     where
-        R: 'a,
+        Self: 'a,
     {
         Self {
-            indices: Vec::with_capacity(stacks.clone().map(|s| s.indices.len()).sum()),
+            indices: S::merge_regions(stacks.clone().map(|s| &s.indices)),
             region: R::merge_regions(stacks.map(|r| &r.region)),
         }
     }
@@ -235,7 +232,7 @@ impl<R: Region> FlatStack<R> {
     #[inline]
     #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'_> {
-        self.region.index(self.indices[offset])
+        self.region.index(self.indices.index(offset))
     }
 
     /// Returns the number of indices in the stack.
@@ -250,12 +247,6 @@ impl<R: Region> FlatStack<R> {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.indices.is_empty()
-    }
-
-    /// Returns the total number of indices the stack can hold without reallocation.
-    #[must_use]
-    pub fn capacity(&self) -> usize {
-        self.indices.capacity()
     }
 
     /// Reserves space to hold `additional` indices.
@@ -289,22 +280,49 @@ impl<R: Region> FlatStack<R> {
         self.region.reserve_regions(regions);
     }
 
-    /// Iterate the items in this stack.
-    #[inline]
-    pub fn iter(&self) -> Iter<'_, R> {
-        self.into_iter()
-    }
-
     /// Heap size, size - capacity
     #[inline]
     pub fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        use crate::impls::offsets::OffsetContainer;
         self.region.heap_size(&mut callback);
-        OffsetContainer::heap_size(&self.indices, callback);
+        self.indices.heap_size(callback);
     }
 }
 
-impl<T, R: Region + Push<T>> Extend<T> for FlatStack<R> {
+impl<R, S> FlatStack<R, S>
+where
+    R: Region,
+    S: OffsetContainer<<R as Region>::Index>,
+{
+    /// Iterate the items in this stack.
+    #[inline]
+    pub fn iter<'a>(&'a self) -> Iter<'a, R, <&'a S as IntoIterator>::IntoIter>
+    where
+        &'a S: IntoIterator<Item = &'a R::Index>,
+    {
+        self.into_iter()
+    }
+}
+
+impl<R: Region> FlatStack<R> {
+    /// Default implementation based on the preference of type `T`.
+    #[inline]
+    #[must_use]
+    pub fn default_impl<T: RegionPreference<Region = R>>() -> Self {
+        Self::default()
+    }
+
+    /// Returns the total number of indices the stack can hold without reallocation.
+    #[must_use]
+    pub fn capacity(&self) -> usize {
+        self.indices.capacity()
+    }
+}
+
+impl<T, R, S> Extend<T> for FlatStack<R, S>
+where
+    R: Region + Push<T>,
+    S: OffsetContainer<<R as Region>::Index>,
+{
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
         self.reserve(iter.size_hint().0);
@@ -314,13 +332,16 @@ impl<T, R: Region + Push<T>> Extend<T> for FlatStack<R> {
     }
 }
 
-impl<'a, R: Region> IntoIterator for &'a FlatStack<R> {
+impl<'a, R: Region, S: OffsetContainer<<R as Region>::Index>> IntoIterator for &'a FlatStack<R, S>
+where
+    &'a S: IntoIterator<Item = &'a <R as Region>::Index>,
+{
     type Item = R::ReadItem<'a>;
-    type IntoIter = Iter<'a, R>;
+    type IntoIter = Iter<'a, R, <&'a S as IntoIterator>::IntoIter>;
 
     fn into_iter(self) -> Self::IntoIter {
         Iter {
-            inner: self.indices.iter(),
+            inner: self.indices.into_iter(),
             region: &self.region,
         }
     }
@@ -328,14 +349,22 @@ impl<'a, R: Region> IntoIterator for &'a FlatStack<R> {
 
 /// An iterator over [`FlatStack`]. The iterator yields [`Region::ReadItem`] elements, which
 /// it obtains by looking up indices.
-pub struct Iter<'a, R: Region> {
+pub struct Iter<'a, R, S>
+where
+    R: Region,
+    S: Iterator<Item = &'a <R as Region>::Index>,
+{
     /// Iterator over indices.
-    inner: std::slice::Iter<'a, R::Index>,
+    inner: S,
     /// Region to map indices to read items.
     region: &'a R,
 }
 
-impl<'a, R: Region> Iterator for Iter<'a, R> {
+impl<'a, R, S> Iterator for Iter<'a, R, S>
+where
+    R: Region,
+    S: Iterator<Item = &'a <R as Region>::Index>,
+{
     type Item = R::ReadItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -347,9 +376,18 @@ impl<'a, R: Region> Iterator for Iter<'a, R> {
     }
 }
 
-impl<R: Region> ExactSizeIterator for Iter<'_, R> {}
+impl<'a, R, S> ExactSizeIterator for Iter<'a, R, S>
+where
+    R: Region,
+    S: ExactSizeIterator<Item = &'a <R as Region>::Index>,
+{
+}
 
-impl<R: Region> Clone for Iter<'_, R> {
+impl<'a, R, S> Clone for Iter<'a, R, S>
+where
+    R: Region,
+    S: Iterator<Item = &'a <R as Region>::Index> + Clone,
+{
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
@@ -358,7 +396,11 @@ impl<R: Region> Clone for Iter<'_, R> {
     }
 }
 
-impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
+impl<R, S, T> FromIterator<T> for FlatStack<R, S>
+where
+    R: Region + Push<T>,
+    S: OffsetContainer<<R as Region>::Index>,
+{
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
         let mut c = Self::with_capacity(iter.size_hint().0);
@@ -367,7 +409,7 @@ impl<R: Region + Push<T>, T> FromIterator<T> for FlatStack<R> {
     }
 }
 
-impl<R: Region + Clone> Clone for FlatStack<R> {
+impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
     fn clone(&self) -> Self {
         Self {
             region: self.region.clone(),
@@ -392,7 +434,8 @@ pub struct CopyIter<I>(pub I);
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::impls::tuple::TupleARegion;
+    use crate::impls::offsets::OffsetOptimized;
+    use crate::impls::tuple::{TupleABRegion, TupleARegion};
 
     use super::*;
 
@@ -458,7 +501,7 @@ mod tests {
             // Make sure that types are debug, even if we don't use this in the test.
             for<'a> R::ReadItem<'a>: Debug,
         {
-            let mut c = FlatStack::default();
+            let mut c = FlatStack::<_>::default();
             c.copy(t);
 
             let mut cc = c.clone();
@@ -626,6 +669,59 @@ mod tests {
         let mut c = <StringRegion>::default();
         let index = c.push("abc".to_string());
         owned_roundtrip::<StringRegion, String>(&mut c, index);
+    }
+
+    #[test]
+    fn test_my_understanding() {
+        let item = (vec![1, 2, 3], vec![1, 2, 3]);
+        let item2 = (vec![1, 2, 3, 4], vec![1, 2, 3, 4]);
+        let mut r = <TupleABRegion<SliceRegion<MirrorRegion<u8>>, OwnedRegion<u8>>>::default();
+        let _index: ((usize, usize), (usize, usize)) = r.push(&item);
+
+        let mut r = <TupleABRegion<
+            ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
+            ConsecutiveOffsetPairs<OwnedRegion<u8>>,
+        >>::default();
+        let _index: (usize, usize) = r.push(&item);
+
+        let mut r = <CombineSequential<
+            TupleABRegion<
+                ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
+                ConsecutiveOffsetPairs<OwnedRegion<u8>>,
+            >,
+            (OffsetOptimized, OffsetOptimized),
+        >>::default();
+        let _index: usize = r.push(&item);
+
+        let mut fs = FlatStack::<
+            CombineSequential<
+                TupleABRegion<
+                    ConsecutiveOffsetPairs<SliceRegion<MirrorRegion<u8>>>,
+                    CollapseSequence<ConsecutiveOffsetPairs<OwnedRegion<u8>>>,
+                >,
+                (OffsetOptimized, OffsetOptimized),
+            >,
+            OffsetOptimized,
+        >::default();
+
+        for item in std::iter::repeat(&item)
+            .take(1000)
+            .chain(std::iter::once(&item2))
+        {
+            fs.copy(item);
+            let mut size = 0;
+            let mut capacity = 0;
+            let mut count = 0;
+            fs.heap_size(|siz, cap| {
+                size += siz;
+                capacity += cap;
+                count += (cap > 0) as usize
+            });
+
+            println!("size {size}, capacity {capacity}, allocations {count}");
+        }
+        println!("fs size {}", std::mem::size_of_val(&fs));
+        assert_eq!(&item.1, fs.get(0).1);
     }
 
     /// Test that items and owned variants can be reborrowed to shorten their lifetimes.
