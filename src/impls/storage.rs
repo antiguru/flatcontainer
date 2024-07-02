@@ -1,6 +1,6 @@
 //! Storage abstractions to represent slices of data.
 
-use crate::CopyIter;
+use crate::PushIter;
 
 /// Behavior to allocate storage.
 ///
@@ -105,9 +105,9 @@ impl<T: Clone> PushStorage<&[T]> for Vec<T> {
     }
 }
 
-impl<I: IntoIterator<Item = T>, T> PushStorage<CopyIter<I>> for Vec<T> {
+impl<I: IntoIterator<Item = T>, T> PushStorage<PushIter<I>> for Vec<T> {
     #[inline]
-    fn push_storage(&mut self, item: CopyIter<I>) {
+    fn push_storage(&mut self, item: PushIter<I>) {
         self.extend(item.0);
     }
 }

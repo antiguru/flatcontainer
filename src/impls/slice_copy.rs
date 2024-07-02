@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 use crate::impls::storage::{PushStorage, Storage};
-use crate::{CopyIter, Push, Region, ReserveItems};
+use crate::{Push, PushIter, Region, ReserveItems};
 
 /// A container for owned types.
 ///
@@ -117,13 +117,13 @@ impl<T, S, const N: usize> Push<[T; N]> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
     S: Storage<T>
-        + for<'a> PushStorage<CopyIter<[T; N]>>
+        + for<'a> PushStorage<PushIter<[T; N]>>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
     fn push(&mut self, item: [T; N]) -> <OwnedRegion<T> as Region>::Index {
         let start = self.slices.len();
-        self.slices.push_storage(CopyIter(item));
+        self.slices.push_storage(PushIter(item));
         (start, self.slices.len())
     }
 }
@@ -249,24 +249,24 @@ where
     }
 }
 
-impl<T, S, I> Push<CopyIter<I>> for OwnedRegion<T, S>
+impl<T, S, I> Push<PushIter<I>> for OwnedRegion<T, S>
 where
     I: IntoIterator<Item = T>,
     <I as IntoIterator>::IntoIter: ExactSizeIterator,
     T: Clone,
     S: Storage<T>
-        + PushStorage<CopyIter<I>>
+        + PushStorage<PushIter<I>>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
-    fn push(&mut self, item: CopyIter<I>) -> <OwnedRegion<T, S> as Region>::Index {
+    fn push(&mut self, item: PushIter<I>) -> <OwnedRegion<T, S> as Region>::Index {
         let start = self.slices.len();
         self.slices.push_storage(item);
         (start, self.slices.len())
     }
 }
 
-impl<T, S, J> ReserveItems<CopyIter<J>> for OwnedRegion<T, S>
+impl<T, S, J> ReserveItems<PushIter<J>> for OwnedRegion<T, S>
 where
     [T]: ToOwned,
     S: Storage<T> + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
@@ -275,7 +275,7 @@ where
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
     where
-        I: Iterator<Item = CopyIter<J>> + Clone,
+        I: Iterator<Item = PushIter<J>> + Clone,
     {
         self.slices
             .reserve(items.flat_map(|i| i.0.into_iter()).count());
@@ -284,7 +284,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{CopyIter, Push, Region, ReserveItems};
+    use crate::{Push, PushIter, Region, ReserveItems};
 
     use super::*;
 
@@ -318,8 +318,8 @@ mod tests {
     fn test_copy_iter() {
         let mut r = <OwnedRegion<u8>>::default();
         let iter = [1; 4].into_iter();
-        r.reserve_items(std::iter::once(CopyIter(iter.clone())));
-        let index = r.push(CopyIter(iter));
+        r.reserve_items(std::iter::once(PushIter(iter.clone())));
+        let index = r.push(PushIter(iter));
         assert_eq!([1, 1, 1, 1], r.index(index));
     }
 }

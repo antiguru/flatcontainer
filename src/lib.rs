@@ -422,13 +422,13 @@ impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
     }
 }
 
-/// A type to wrap and copy iterators onto regions.
+/// A type to wrap and push iterators into regions.
 ///
 /// This only exists to avoid blanket implementations that might conflict with more specific
 /// implementations offered by some regions.
 #[repr(transparent)]
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
-pub struct CopyIter<I>(pub I);
+pub struct PushIter<I>(pub I);
 
 #[cfg(test)]
 mod tests {
