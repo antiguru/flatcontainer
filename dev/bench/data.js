@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719942469921,
+  "lastUpdate": 1719946380106,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5615,6 +5615,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 64067440.7,
             "range": "± 1001798.35",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ebec264c455896a4060802115c8714f79e552b36",
+          "message": "Simplify offset iterators and enable clone (#53)\n\nAdd a required `Clone` bound to `OffsetContainer`'s `Iter` associated type,\r\nwhich saves downstream users to requiring it themselves. It is reasonable\r\nto require it from all implementations.\r\n\r\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-07-02T14:49:39-04:00",
+          "tree_id": "6abb35026adcf47fe6c894f7c5b442af3bdb4793",
+          "url": "https://github.com/antiguru/flatcontainer/commit/ebec264c455896a4060802115c8714f79e552b36"
+        },
+        "date": 1719946379575,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 960.7,
+            "range": "± 17.81",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 393209.9,
+            "range": "± 11160.76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 32627292,
+            "range": "± 701131.58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 15925429.7,
+            "range": "± 671538.69",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 254251,
+            "range": "± 5919.68",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 274027.6,
+            "range": "± 6998.70",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 272870.33,
+            "range": "± 50157.38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 46569936.3,
+            "range": "± 952670.44",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 51396864.3,
+            "range": "± 2890397.86",
             "unit": "ns/iter"
           }
         ]
