@@ -433,7 +433,7 @@ pub struct CopyIter<I>(pub I);
 #[cfg(test)]
 mod tests {
     use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::impls::tuple::{TupleARegion};
+    use crate::impls::tuple::TupleARegion;
 
     use super::*;
 

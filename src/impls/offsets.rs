@@ -175,11 +175,7 @@ impl Iterator for OffsetStrideIter {
 /// A list of unsigned integers that uses `u32` elements as long as they are small enough, and switches to `u64` once they are not.
 #[derive(Eq, PartialEq, Clone, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OffsetList<S, L>
-where
-    S: OffsetContainer<u32>,
-    L: OffsetContainer<u64>,
-{
+pub struct OffsetList<S, L> {
     /// Offsets that fit within a `u32`.
     pub smol: S,
     /// Offsets that either do not fit in a `u32`, or are inserted after some offset that did not fit.
