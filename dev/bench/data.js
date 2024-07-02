@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719942120800,
+  "lastUpdate": 1719942469921,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5537,6 +5537,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 52229849.7,
             "range": "± 1838385.91",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "f609a31713444d4f0e972be40b5dc23940245ef6",
+          "message": "FlatStack: use OffsetContainer iter (#52)\n\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-07-02T13:44:13-04:00",
+          "tree_id": "5e74ddf6a76500312b37f4a14d5b3abcfb182a44",
+          "url": "https://github.com/antiguru/flatcontainer/commit/f609a31713444d4f0e972be40b5dc23940245ef6"
+        },
+        "date": 1719942469632,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 1069.33,
+            "range": "± 38.89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 407075.08,
+            "range": "± 12026.78",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 47051537.1,
+            "range": "± 227572.49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 24035814.7,
+            "range": "± 295403.07",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 213435.95,
+            "range": "± 4010.32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 225273.37,
+            "range": "± 2887.42",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 225387.03,
+            "range": "± 6331.83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 59562193.2,
+            "range": "± 728283.13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 64067440.7,
+            "range": "± 1001798.35",
             "unit": "ns/iter"
           }
         ]
