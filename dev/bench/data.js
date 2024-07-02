@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1719590771194,
+  "lastUpdate": 1719941023279,
   "repoUrl": "https://github.com/antiguru/flatcontainer",
   "entries": {
     "Benchmark": [
@@ -5303,6 +5303,84 @@ window.BENCHMARK_DATA = {
             "name": "vec_u_vn_s_clone",
             "value": 53617320.6,
             "range": "± 1215964.72",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "antiguru@gmail.com",
+            "name": "Moritz Hoffmann",
+            "username": "antiguru"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "bc4b8e9dc13c04b8bffd0a1c48be4d9f569db13b",
+          "message": "Separate data storage (#19)\n\nIntroduce storage trait to abstract slices\r\n\r\nSigned-off-by: Moritz Hoffmann <antiguru@gmail.com>",
+          "timestamp": "2024-07-02T13:20:21-04:00",
+          "tree_id": "368f0d7e35899ec82d224be081735fbbd61cb315",
+          "url": "https://github.com/antiguru/flatcontainer/commit/bc4b8e9dc13c04b8bffd0a1c48be4d9f569db13b"
+        },
+        "date": 1719941022846,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "empty_clone",
+            "value": 960.89,
+            "range": "± 9.76",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "str10_clone",
+            "value": 413084.48,
+            "range": "± 38555.20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string10_clone",
+            "value": 32616543,
+            "range": "± 2214115.92",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "string20_clone",
+            "value": 16477250.8,
+            "range": "± 358504.60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u32x2_clone",
+            "value": 216971.33,
+            "range": "± 7093.39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u64_clone",
+            "value": 223267.17,
+            "range": "± 8217.25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "u8_u64_clone",
+            "value": 212177.64,
+            "range": "± 3697.27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_s_clone",
+            "value": 48585834.3,
+            "range": "± 1264414.10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "vec_u_vn_s_clone",
+            "value": 52267356.9,
+            "range": "± 1846327.31",
             "unit": "ns/iter"
           }
         ]
