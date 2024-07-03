@@ -112,6 +112,17 @@ pub trait Push<T>: Region {
     fn push(&mut self, item: T) -> Self::Index;
 }
 
+/// Push an item `T` into a region.
+pub trait TryPush<T>: Region {
+    /// Push `item` into self, returning an index that allows to look up the
+    /// corresponding read item.
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T>;
+
+    /// Test if an item can be pushed into the region without reallocation.
+    #[must_use]
+    fn can_push(&self, item: &T) -> bool;
+}
+
 /// Reserve space in the receiving region.
 ///
 /// Closely related to [`Push`], but separate because target type is likely different.
@@ -224,6 +235,27 @@ impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
     {
         let index = self.region.push(item);
         self.indices.push(index);
+    }
+
+    /// Appends the element to the back of the stack, if there is sufficient capacity
+    #[inline]
+    pub fn try_push<T>(&mut self, item: T) -> Result<(), T>
+    where
+        R: TryPush<T>,
+    {
+        let index = self.region.try_push(item)?;
+        self.indices.push(index);
+        Ok(())
+    }
+
+    /// Appends the element to the back of the stack, if there is sufficient capacity
+    #[inline]
+    pub fn can_push<T>(&mut self, item: &T) -> bool
+    where
+        R: TryPush<T>,
+    {
+        // TODO: Include `indices` in the check.
+        self.region.can_push(item)
     }
 
     /// Returns the element at the `index` position.

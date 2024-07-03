@@ -48,6 +48,10 @@ pub trait Storage<T>: Default {
     /// Returns `true` if empty, i.e., it doesn't contain any elements.
     #[must_use]
     fn is_empty(&self) -> bool;
+
+    /// Returns the capacity of the storage.
+    #[must_use]
+    fn capacity(&self) -> usize;
 }
 
 impl<T> Storage<T> for Vec<T> {
@@ -82,6 +86,11 @@ impl<T> Storage<T> for Vec<T> {
     #[must_use]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        self.capacity()
     }
 }
 

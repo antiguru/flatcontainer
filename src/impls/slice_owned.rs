@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 use crate::impls::storage::{PushStorage, Storage};
-use crate::{Push, PushIter, Region, ReserveItems};
+use crate::{Push, PushIter, Region, ReserveItems, TryPush};
 
 /// A container for owned types.
 ///
@@ -128,6 +128,30 @@ where
     }
 }
 
+impl<T, S, const N: usize> TryPush<[T; N]> for OwnedRegion<T, S>
+where
+    [T]: ToOwned,
+    S: Storage<T>
+        + for<'a> PushStorage<PushIter<[T; N]>>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
+    #[inline]
+    fn try_push(&mut self, item: [T; N]) -> Result<<OwnedRegion<T> as Region>::Index, [T; N]> {
+        if self.can_push(&item) {
+            let start = self.slices.len();
+            self.slices.push_storage(PushIter(item));
+            Ok((start, self.slices.len()))
+        } else {
+            Err(item)
+        }
+    }
+
+    #[inline]
+    fn can_push(&self, item: &[T; N]) -> bool {
+        self.slices.capacity() - self.slices.len() >= item.len()
+    }
+}
+
 impl<T, S, const N: usize> Push<&[T; N]> for OwnedRegion<T, S>
 where
     T: Clone,
@@ -138,6 +162,27 @@ where
     #[inline]
     fn push(&mut self, item: &[T; N]) -> <OwnedRegion<T> as Region>::Index {
         self.push(item.as_slice())
+    }
+}
+
+impl<T, S, const N: usize> TryPush<&[T; N]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
+    #[inline]
+    fn try_push<'a>(
+        &mut self,
+        item: &'a [T; N],
+    ) -> Result<<OwnedRegion<T> as Region>::Index, &'a [T; N]> {
+        self.try_push(item.as_slice()).map_err(|_| item)
+    }
+
+    #[inline]
+    fn can_push(&self, item: &&[T; N]) -> bool {
+        self.can_push(&item.as_slice())
     }
 }
 
@@ -180,6 +225,33 @@ where
         let start = self.slices.len();
         self.slices.push_storage(item);
         (start, self.slices.len())
+    }
+}
+
+impl<T, S> TryPush<&[T]> for OwnedRegion<T, S>
+where
+    T: Clone,
+    S: Storage<T>
+        + for<'a> PushStorage<&'a [T]>
+        + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
+{
+    #[inline]
+    fn try_push<'a>(
+        &mut self,
+        item: &'a [T],
+    ) -> Result<<OwnedRegion<T, S> as Region>::Index, &'a [T]> {
+        if self.can_push(&item) {
+            let start = self.slices.len();
+            self.slices.push_storage(item);
+            Ok((start, self.slices.len()))
+        } else {
+            Err(item)
+        }
+    }
+
+    #[inline]
+    fn can_push(&self, item: &&[T]) -> bool {
+        self.slices.capacity() - self.slices.len() >= item.len()
     }
 }
 
@@ -321,5 +393,17 @@ mod tests {
         r.reserve_items(std::iter::once(PushIter(iter.clone())));
         let index = r.push(PushIter(iter));
         assert_eq!([1, 1, 1, 1], r.index(index));
+    }
+
+    #[test]
+    fn try_push() {
+        let mut r = <OwnedRegion<u8>>::default();
+        assert!(!r.can_push(&[1; 4]));
+        assert_eq!(r.try_push(&[1; 4]), Err(&[1; 4]));
+        r.reserve_items(std::iter::once(&[1; 4]));
+        assert!(r.can_push(&[1; 4]));
+        let index = r.try_push(&[1; 4]);
+        assert_eq!(index, Ok((0, 4)));
+        assert_eq!([1, 1, 1, 1], r.index(index.unwrap()));
     }
 }
