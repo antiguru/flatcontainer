@@ -113,10 +113,17 @@ pub trait Push<T>: Region {
 }
 
 /// Push an item `T` into a region.
-pub trait TryPush<T>: Region {
+pub trait TryPush<T>: Push<T> {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
-    fn try_push(&mut self, item: T) -> Result<Self::Index, T>;
+    #[inline]
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T> {
+        if self.can_push(&item) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
 
     /// Test if an item can be pushed into the region without reallocation.
     #[must_use]

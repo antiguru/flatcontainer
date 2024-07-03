@@ -136,17 +136,6 @@ where
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
     #[inline]
-    fn try_push(&mut self, item: [T; N]) -> Result<<OwnedRegion<T> as Region>::Index, [T; N]> {
-        if self.can_push(&item) {
-            let start = self.slices.len();
-            self.slices.push_storage(PushIter(item));
-            Ok((start, self.slices.len()))
-        } else {
-            Err(item)
-        }
-    }
-
-    #[inline]
     fn can_push(&self, item: &[T; N]) -> bool {
         self.slices.capacity() - self.slices.len() >= item.len()
     }
@@ -172,14 +161,6 @@ where
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
-    #[inline]
-    fn try_push<'a>(
-        &mut self,
-        item: &'a [T; N],
-    ) -> Result<<OwnedRegion<T> as Region>::Index, &'a [T; N]> {
-        self.try_push(item.as_slice()).map_err(|_| item)
-    }
-
     #[inline]
     fn can_push(&self, item: &&[T; N]) -> bool {
         self.can_push(&item.as_slice())
@@ -235,20 +216,6 @@ where
         + for<'a> PushStorage<&'a [T]>
         + std::ops::Index<std::ops::Range<usize>, Output = [T]>,
 {
-    #[inline]
-    fn try_push<'a>(
-        &mut self,
-        item: &'a [T],
-    ) -> Result<<OwnedRegion<T, S> as Region>::Index, &'a [T]> {
-        if self.can_push(&item) {
-            let start = self.slices.len();
-            self.slices.push_storage(item);
-            Ok((start, self.slices.len()))
-        } else {
-            Err(item)
-        }
-    }
-
     #[inline]
     fn can_push(&self, item: &&[T]) -> bool {
         self.slices.capacity() - self.slices.len() >= item.len()
