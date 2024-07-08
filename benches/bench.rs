@@ -381,6 +381,12 @@ fn vec_u_vn_s_copy_flat_region_column(bencher: &mut Bencher) {
     );
 }
 
+fn set_bytes(target: &mut u64, bytes: usize) {
+    if std::env::var("BYTES").is_ok() {
+        *target = bytes as u64;
+    }
+}
+
 fn _bench_copy<T: RegionPreference + Eq>(bencher: &mut Bencher, record: T)
 where
     for<'a> <T as RegionPreference>::Region: Push<&'a T>,
@@ -399,8 +405,7 @@ where
         siz += this_siz;
         cap += this_cap
     });
-    bencher.bytes = siz as u64;
-    println!("{siz} {cap}");
+    set_bytes(&mut bencher.bytes, siz);
 }
 
 fn _bench_copy_region<R: Region, T>(bencher: &mut Bencher, record: T)
@@ -421,8 +426,7 @@ where
         siz += this_siz;
         cap += this_cap
     });
-    bencher.bytes = siz as u64;
-    println!("{siz} {cap}");
+    set_bytes(&mut bencher.bytes, siz);
 }
 
 fn _bench_clone<T: RegionPreference + Eq + Clone>(bencher: &mut Bencher, record: T) {
@@ -454,7 +458,6 @@ where
         siz += this_siz;
         cap += this_cap
     });
-    bencher.bytes = siz as u64;
 }
 
 fn _bench_prealloc<T: RegionPreference + Eq>(bencher: &mut Bencher, record: T)
@@ -475,7 +478,7 @@ where
         siz += this_siz;
         cap += this_cap
     });
-    bencher.bytes = siz as u64;
+    set_bytes(&mut bencher.bytes, siz);
 }
 
 fn _bench_copy_flat_preference<T>(bencher: &mut Bencher, record: T)
@@ -506,6 +509,5 @@ where
         siz += this_siz;
         cap += this_cap
     });
-    bencher.bytes = siz as u64;
-    println!("{siz} {cap}");
+    set_bytes(&mut bencher.bytes, siz);
 }
