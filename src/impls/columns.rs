@@ -7,8 +7,8 @@ use std::slice::Iter;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::deduplicate::ConsecutiveOffsetPairs;
-use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
+use crate::impls::deduplicate::ConsecutiveIndexPairs;
+use crate::impls::index::{IndexContainer, IndexOptimized};
 use crate::{IntoOwned, PushIter};
 use crate::{OwnedRegion, Push, Region};
 
@@ -25,7 +25,7 @@ use crate::{OwnedRegion, Push, Region};
 ///
 /// Copy a table-like structure:
 /// ```
-/// # use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
+/// # use flatcontainer::impls::deduplicate::ConsecutiveIndexPairs;
 /// # use flatcontainer::{ColumnsRegion, Push, Region, StringRegion};
 /// let data = [
 ///     vec![],
@@ -37,7 +37,7 @@ use crate::{OwnedRegion, Push, Region};
 ///     vec![],
 /// ];
 ///
-/// let mut r = <ColumnsRegion<ConsecutiveOffsetPairs<StringRegion>>>::default();
+/// let mut r = <ColumnsRegion<ConsecutiveIndexPairs<StringRegion>>>::default();
 ///
 /// let mut indices = Vec::with_capacity(data.len());
 ///
@@ -60,13 +60,13 @@ use crate::{OwnedRegion, Push, Region};
             O: Serialize + for<'a> Deserialize<'a>,
             ")
 )]
-pub struct ColumnsRegion<R, O = OffsetOptimized>
+pub struct ColumnsRegion<R, O = IndexOptimized>
 where
     R: Region,
 {
     /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
-    indices: ConsecutiveOffsetPairs<OwnedRegion<R::Index>, O>,
+    indices: ConsecutiveIndexPairs<OwnedRegion<R::Index>, O>,
     /// Storage for columns.
     inner: Vec<R>,
 }
@@ -92,11 +92,11 @@ where
 impl<R, O> Region for ColumnsRegion<R, O>
 where
     R: Region,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
-    type Index = <ConsecutiveOffsetPairs<OwnedRegion<R::Index>, OffsetOptimized> as Region>::Index;
+    type Index = <ConsecutiveIndexPairs<OwnedRegion<R::Index>, IndexOptimized> as Region>::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -112,7 +112,7 @@ where
         }
 
         Self {
-            indices: ConsecutiveOffsetPairs::merge_regions(regions.map(|r| &r.indices)),
+            indices: ConsecutiveIndexPairs::merge_regions(regions.map(|r| &r.indices)),
             inner,
         }
     }
@@ -169,11 +169,11 @@ where
 impl<R, O> Default for ColumnsRegion<R, O>
 where
     R: Region,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn default() -> Self {
         Self {
-            indices: ConsecutiveOffsetPairs::default(),
+            indices: ConsecutiveIndexPairs::default(),
             inner: Vec::default(),
         }
     }
@@ -376,7 +376,7 @@ where
 impl<R, O> Push<ReadColumns<'_, R>> for ColumnsRegion<R, O>
 where
     for<'a> R: Region + Push<<R as Region>::ReadItem<'a>>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -395,7 +395,7 @@ where
 impl<'a, R, O, T> Push<&'a [T]> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -414,7 +414,7 @@ where
 impl<R, O, T, const N: usize> Push<[T; N]> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -433,7 +433,7 @@ where
 impl<'a, R, O, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -452,7 +452,7 @@ where
 impl<R, O, T> Push<Vec<T>> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -471,7 +471,7 @@ where
 impl<'a, R, O, T> Push<&'a Vec<T>> for ColumnsRegion<R, O>
 where
     R: Region + Push<&'a T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
         // Ensure all required regions exist.
@@ -490,7 +490,7 @@ where
 impl<R, O, T, I> Push<PushIter<I>> for ColumnsRegion<R, O>
 where
     R: Region + Push<T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
     I: IntoIterator<Item = T>,
     I::IntoIter: ExactSizeIterator,
 {
@@ -509,7 +509,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
     use crate::{MirrorRegion, OwnedRegion, Push, PushIter, Region, StringRegion};
 
     use super::*;
@@ -573,7 +573,7 @@ mod tests {
         ];
 
         let mut r =
-            ColumnsRegion::<CollapseSequence<ConsecutiveOffsetPairs<StringRegion>>>::default();
+            ColumnsRegion::<CollapseSequence<ConsecutiveIndexPairs<StringRegion>>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -601,7 +601,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
+        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -629,7 +629,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
+        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
 
         let mut indices = Vec::with_capacity(data.len());
 
@@ -713,7 +713,7 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveOffsetPairs<StringRegion>>::default();
+        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
 
         for row in &data {
             let _ = r.push(PushIter(row.iter()));
