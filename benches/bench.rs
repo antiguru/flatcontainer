@@ -4,8 +4,8 @@
 
 extern crate test;
 
-use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-use flatcontainer::impls::offsets::OffsetOptimized;
+use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
+use flatcontainer::impls::index::IndexOptimized;
 use flatcontainer::impls::tuple::{TupleABCRegion, TupleABRegion};
 use flatcontainer::{
     ColumnsRegion, FlatStack, MirrorRegion, OwnedRegion, Push, Region, RegionPreference,
@@ -87,7 +87,7 @@ fn string10_copy_region(bencher: &mut Bencher) {
 #[bench]
 fn string10_copy_region_collapse(bencher: &mut Bencher) {
     _bench_copy_region::<
-        SliceRegion<CollapseSequence<ConsecutiveOffsetPairs<StringRegion>>, OffsetOptimized>,
+        SliceRegion<CollapseSequence<ConsecutiveIndexPairs<StringRegion>>, IndexOptimized>,
         _,
     >(bencher, vec![format!("grawwwwrr!"); 1024]);
 }

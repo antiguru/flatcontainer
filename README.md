@@ -47,9 +47,9 @@ to look up a value. A region for slices has storage to remember slices of indexe
 where the index can be used to look up the datum's representation in an inner
 region.
 
-`flatcontainer` provides [`FlatStack`], an exemplary implementation of how to
+`flatcontainer` provides the [`FlatStack`] type, an exemplary implementation of how to
 implement a collection of items that supports pushing additional elements,
-and retrieval by offset of previously pushed elements. It can be used in many
+and retrieval by an index to previously pushed elements. It can be used in many
 places that simply want to use a flat data representation, but it leaves potential
 for optimization behind. Specifically, indexes, although opaque, follow a
 simple structure where a more efficient storage can save memory instead of blindly
@@ -101,10 +101,10 @@ we know more about the data, and can use a better approach to storing indexes.
   e.g., 0, 2, 4, 8, ..., which we can represent using constant memory by remembering the
   stride and length. We can extend this to storing a tail of elements equals to the last
   stride by adding another count. Such an index container uses 0 bits in the limit!
-* Consult the [offsets] module for types specialized to storing indexes using less bits.
+* Consult the [index] module for types specialized to storing indexes using less bits.
 
 Flatcontainer provides some implementations of these concepts. To merge adjacent start-end
-pairs, wrap a region in a [`ConsecutiveOffsetPairs`] region. It stores indexes and presents
+pairs, wrap a region in a [`ConsecutiveIndexPairs`] region. It stores indexes and presents
 outwards as a dense sequence of 0, 1, 2, ...
 
 A [`CollapseSequence`] region remembers the index of the last element, and if a new element
@@ -112,8 +112,8 @@ equals the last, it'll return the previous index again instead of storing the sa
 multiple times. This is limited to the direct predecessor, because otherwise storing
 indexes and scanning through previous elements would be too expensive.
 
-[offsets]: impls::offsets
-[`ConsecutiveOffsetPairs`]: impls::deduplicate::ConsecutiveOffsetPairs
+[index]: impls::index
+[`ConsecutiveIndexPairs`]: impls::deduplicate::ConsecutiveIndexPairs
 [`CollapseSequence`]: impls::deduplicate::CollapseSequence
 
 ## Comparison to columnation

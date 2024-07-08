@@ -1,6 +1,6 @@
 //! Demonstration of how to encode recursive data structures.
 
-use flatcontainer::impls::deduplicate::ConsecutiveOffsetPairs;
+use flatcontainer::impls::deduplicate::ConsecutiveIndexPairs;
 use flatcontainer::{IntoOwned, Push, Region, StringRegion};
 
 #[derive(Clone)]
@@ -135,7 +135,7 @@ where
 
 #[test]
 fn recursive() {
-    let mut region = <ListRegion<ConsecutiveOffsetPairs<StringRegion>>>::default();
+    let mut region = <ListRegion<ConsecutiveIndexPairs<StringRegion>>>::default();
     let r = List("abc", Some(Box::new(List("def", None))));
     let index = region.push(&r);
 

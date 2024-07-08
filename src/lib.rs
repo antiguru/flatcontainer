@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod impls;
 
-use crate::impls::offsets::OffsetContainer;
+use crate::impls::index::IndexContainer;
 pub use impls::columns::ColumnsRegion;
 pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
@@ -183,7 +183,7 @@ impl<R: Default, S: Default> Default for FlatStack<R, S> {
     }
 }
 
-impl<R: Region, S: OffsetContainer<<R as Region>::Index>> Debug for FlatStack<R, S>
+impl<R: Region, S: IndexContainer<<R as Region>::Index>> Debug for FlatStack<R, S>
 where
     for<'a> R::ReadItem<'a>: Debug,
 {
@@ -192,7 +192,7 @@ where
     }
 }
 
-impl<R: Region, S: OffsetContainer<<R as Region>::Index>> FlatStack<R, S> {
+impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
     /// Returns a flat stack that can absorb `capacity` indices without reallocation.
     ///
     /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
@@ -226,11 +226,11 @@ impl<R: Region, S: OffsetContainer<<R as Region>::Index>> FlatStack<R, S> {
         self.indices.push(index);
     }
 
-    /// Returns the element at the `offset` position.
+    /// Returns the element at the `index` position.
     #[inline]
     #[must_use]
-    pub fn get(&self, offset: usize) -> R::ReadItem<'_> {
-        self.region.index(self.indices.index(offset))
+    pub fn get(&self, index: usize) -> R::ReadItem<'_> {
+        self.region.index(self.indices.index(index))
     }
 
     /// Returns the number of indices in the stack.
@@ -289,7 +289,7 @@ impl<R: Region, S: OffsetContainer<<R as Region>::Index>> FlatStack<R, S> {
 impl<R, S> FlatStack<R, S>
 where
     R: Region,
-    S: OffsetContainer<<R as Region>::Index>,
+    S: IndexContainer<<R as Region>::Index>,
 {
     /// Iterate the items in this stack.
     #[inline]
@@ -316,7 +316,7 @@ impl<R: Region> FlatStack<R> {
 impl<T, R, S> Extend<T> for FlatStack<R, S>
 where
     R: Region + Push<T>,
-    S: OffsetContainer<<R as Region>::Index>,
+    S: IndexContainer<<R as Region>::Index>,
 {
     fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         let iter = iter.into_iter();
@@ -327,7 +327,7 @@ where
     }
 }
 
-impl<'a, R: Region, S: OffsetContainer<<R as Region>::Index>> IntoIterator for &'a FlatStack<R, S> {
+impl<'a, R: Region, S: IndexContainer<<R as Region>::Index>> IntoIterator for &'a FlatStack<R, S> {
     type Item = R::ReadItem<'a>;
     type IntoIter = Iter<'a, R, S::Iter<'a>>;
 
@@ -390,7 +390,7 @@ where
 impl<R, S, T> FromIterator<T> for FlatStack<R, S>
 where
     R: Region + Push<T>,
-    S: OffsetContainer<<R as Region>::Index>,
+    S: IndexContainer<<R as Region>::Index>,
 {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         let iter = iter.into_iter();
@@ -424,7 +424,7 @@ pub struct PushIter<I>(pub I);
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
     use crate::impls::tuple::TupleARegion;
 
     use super::*;
@@ -582,7 +582,7 @@ mod tests {
         test_copy::<_, <(u8, u8) as RegionPreference>::Region>((1, 2));
         test_copy::<_, <(u8, u8) as RegionPreference>::Region>(&(1, 2));
 
-        test_copy::<_, ConsecutiveOffsetPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
+        test_copy::<_, ConsecutiveIndexPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
 
         test_copy::<_, CollapseSequence<OwnedRegion<_>>>([1, 2, 3].as_slice());
         test_copy::<_, CollapseSequence<OwnedRegion<_>>>(&[1, 2, 3]);

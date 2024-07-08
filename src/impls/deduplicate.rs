@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::offsets::{OffsetContainer, OffsetOptimized};
+use crate::impls::index::{IndexContainer, IndexOptimized};
 use crate::{Push, Region, ReserveItems};
 
 /// A region to deduplicate consecutive equal items.
@@ -114,68 +114,68 @@ where
 /// Transform an index of `(usize, usize)` to a sequence of `0..`. Requires the pairs to
 /// be dense, i.e., `(i, j)` is followed by `(j, k)`.
 ///
-/// Defers to region `R` for storing items, and uses offset container `O` to
+/// Defers to region `R` for storing items, and uses index container `O` to
 /// remeber indices. By default, `O` is `Vec<usize>`.
 ///
 /// # Examples
 ///
 /// The following example shows that two inserts into a copy region have a collapsible index:
 /// ```
-/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
+/// use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
 /// use flatcontainer::{Push, OwnedRegion, Region, StringRegion};
-/// let mut r = <ConsecutiveOffsetPairs<OwnedRegion<u8>>>::default();
+/// let mut r = <ConsecutiveIndexPairs<OwnedRegion<u8>>>::default();
 ///
 /// let index = r.push(&b"abc");
 /// assert_eq!(b"abc", r.index(index));
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct ConsecutiveOffsetPairs<R, O = OffsetOptimized> {
+pub struct ConsecutiveIndexPairs<R, O = IndexOptimized> {
     /// Wrapped region
     inner: R,
-    /// Storage for offsets. Always stores element 0.
-    offsets: O,
+    /// Storage for indices. Always stores element 0.
+    indices: O,
     /// The most recent end of the index pair of region `R`.
     last_index: usize,
 }
 
-impl<R: Clone, O: Clone> Clone for ConsecutiveOffsetPairs<R, O> {
+impl<R: Clone, O: Clone> Clone for ConsecutiveIndexPairs<R, O> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
-            offsets: self.offsets.clone(),
+            indices: self.indices.clone(),
             last_index: self.last_index,
         }
     }
 
     fn clone_from(&mut self, source: &Self) {
         self.inner.clone_from(&source.inner);
-        self.offsets.clone_from(&source.offsets);
+        self.indices.clone_from(&source.indices);
         self.last_index = source.last_index;
     }
 }
 
-impl<R, O> Default for ConsecutiveOffsetPairs<R, O>
+impl<R, O> Default for ConsecutiveIndexPairs<R, O>
 where
     R: Default,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     #[inline]
     fn default() -> Self {
         let mut d = Self {
             inner: Default::default(),
-            offsets: Default::default(),
+            indices: Default::default(),
             last_index: 0,
         };
-        d.offsets.push(0);
+        d.indices.push(0);
         d
     }
 }
 
-impl<R, O> Region for ConsecutiveOffsetPairs<R, O>
+impl<R, O> Region for ConsecutiveIndexPairs<R, O>
 where
     R: Region<Index = (usize, usize)>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     type Owned = R::Owned;
     type ReadItem<'a> = R::ReadItem<'a>
@@ -189,11 +189,11 @@ where
     where
         Self: 'a,
     {
-        let mut offsets = O::default();
-        offsets.push(0);
+        let mut indices = O::default();
+        indices.push(0);
         Self {
             inner: R::merge_regions(regions.map(|r| &r.inner)),
-            offsets,
+            indices,
             last_index: 0,
         }
     }
@@ -201,7 +201,7 @@ where
     #[inline]
     fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
         self.inner
-            .index((self.offsets.index(index), self.offsets.index(index + 1)))
+            .index((self.indices.index(index), self.indices.index(index + 1)))
     }
 
     #[inline]
@@ -217,13 +217,13 @@ where
     fn clear(&mut self) {
         self.last_index = 0;
         self.inner.clear();
-        self.offsets.clear();
-        self.offsets.push(0);
+        self.indices.clear();
+        self.indices.push(0);
     }
 
     #[inline]
     fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        self.offsets.heap_size(&mut callback);
+        self.indices.heap_size(&mut callback);
         self.inner.heap_size(callback);
     }
 
@@ -236,25 +236,25 @@ where
     }
 }
 
-impl<R, O, T> Push<T> for ConsecutiveOffsetPairs<R, O>
+impl<R, O, T> Push<T> for ConsecutiveIndexPairs<R, O>
 where
     R: Region<Index = (usize, usize)> + Push<T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     #[inline]
-    fn push(&mut self, item: T) -> <ConsecutiveOffsetPairs<R, O> as Region>::Index {
+    fn push(&mut self, item: T) -> <ConsecutiveIndexPairs<R, O> as Region>::Index {
         let index = self.inner.push(item);
         debug_assert_eq!(index.0, self.last_index);
         self.last_index = index.1;
-        self.offsets.push(index.1);
-        self.offsets.len() - 2
+        self.indices.push(index.1);
+        self.indices.len() - 2
     }
 }
 
-impl<R, O, T> ReserveItems<T> for ConsecutiveOffsetPairs<R, O>
+impl<R, O, T> ReserveItems<T> for ConsecutiveIndexPairs<R, O>
 where
     R: Region<Index = (usize, usize)> + ReserveItems<T>,
-    O: OffsetContainer<usize>,
+    O: IndexContainer<usize>,
 {
     fn reserve_items<I>(&mut self, items: I)
     where
@@ -266,8 +266,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveOffsetPairs};
-    use crate::impls::offsets::OffsetOptimized;
+    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
+    use crate::impls::index::IndexOptimized;
     use crate::{FlatStack, Push, StringRegion};
 
     #[test]
@@ -292,9 +292,9 @@ mod tests {
     }
 
     #[test]
-    fn test_offset_optimized() {
+    fn test_index_optimized() {
         let mut r =
-            CollapseSequence::<ConsecutiveOffsetPairs<StringRegion, OffsetOptimized>>::default();
+            CollapseSequence::<ConsecutiveIndexPairs<StringRegion, IndexOptimized>>::default();
 
         for _ in 0..1000 {
             let _ = r.push("abc");
