@@ -198,6 +198,7 @@ impl<R: Region, O: IndexContainer<R::Index>> PartialEq for ReadSlice<'_, R, O>
 where
     for<'a> R::ReadItem<'a>: PartialEq,
 {
+    #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.iter().eq(*other)
     }
@@ -212,6 +213,7 @@ impl<R: Region, O: IndexContainer<R::Index>> PartialOrd for ReadSlice<'_, R, O>
 where
     for<'a> R::ReadItem<'a>: PartialOrd,
 {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         self.iter().partial_cmp(*other)
     }
@@ -221,6 +223,7 @@ impl<R: Region, O: IndexContainer<R::Index>> Ord for ReadSlice<'_, R, O>
 where
     for<'a> R::ReadItem<'a>: Ord,
 {
+    #[inline]
     fn cmp(&self, other: &Self) -> Ordering {
         self.iter().cmp(*other)
     }
@@ -255,12 +258,14 @@ impl<R: Region, O: IndexContainer<R::Index>> ReadSliceInner<'_, R, O> {
     }
 
     /// The number of elements in this slice.
+    #[inline]
     #[must_use]
     pub fn len(&self) -> usize {
         self.end - self.start
     }
 
     /// Returns `true` if the slice is empty.
+    #[inline]
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.start == self.end
