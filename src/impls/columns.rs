@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::impls::deduplicate::ConsecutiveIndexPairs;
 use crate::impls::index::{IndexContainer, IndexOptimized};
-use crate::{IntoOwned, PushIter};
+use crate::{IntoOwned, PushIter, ReserveItems};
 use crate::{OwnedRegion, Push, Region};
 
 /// A region that can store a variable number of elements per row.
@@ -96,7 +96,7 @@ where
 {
     type Owned = Vec<R::Owned>;
     type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
-    type Index = <ConsecutiveIndexPairs<OwnedRegion<R::Index>, IndexOptimized> as Region>::Index;
+    type Index = <ConsecutiveIndexPairs<OwnedRegion<R::Index>, O> as Region>::Index;
 
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -237,10 +237,10 @@ where
 
     /// Get the element at `offset`.
     #[must_use]
-    pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
+    pub fn get(&self, offset: usize) -> Option<R::ReadItem<'a>> {
         match &self.0 {
             Ok(inner) => inner.get(offset),
-            Err(slice) => IntoOwned::borrow_as(&slice[offset]),
+            Err(slice) => Some(IntoOwned::borrow_as(slice.get(offset)?)),
         }
     }
 
@@ -262,14 +262,15 @@ where
         }
     }
 }
+
 impl<'a, R> ReadColumnsInner<'a, R>
 where
     R: Region,
 {
-    /// Get the element at `offset`.
+    /// Get the element at `offset`, if the offset is valid, and return `None` otherwise.
     #[must_use]
-    pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
-        self.columns[offset].index(self.index[offset])
+    pub fn get(&self, offset: usize) -> Option<R::ReadItem<'a>> {
+        Some(self.columns.get(offset)?.index(*self.index.get(offset)?))
     }
 
     /// Returns the length of this row.
@@ -389,6 +390,52 @@ where
             .zip(&mut self.inner)
             .map(|(value, region)| region.push(value));
         self.indices.push(PushIter(iter))
+    }
+}
+
+impl<'a, R, O> ReserveItems<ReadColumns<'a, R>> for ColumnsRegion<R, O>
+where
+    for<'b> R: Region + ReserveItems<<R as Region>::ReadItem<'b>>,
+    O: IndexContainer<usize>,
+{
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = ReadColumns<'a, R>> + Clone,
+    {
+        let len = items.clone().map(|item| item.len()).max().unwrap_or(0);
+        if len > 0 {
+            // Ensure all required regions exist.
+            while self.inner.len() < len {
+                self.inner.push(R::default());
+            }
+
+            for (index, region) in self.inner.iter_mut().enumerate() {
+                region.reserve_items(items.clone().filter_map(|item| item.get(index)));
+            }
+        }
+    }
+}
+
+impl<'a, T, R, O> ReserveItems<&'a Vec<T>> for ColumnsRegion<R, O>
+where
+    for<'b> R: Region + ReserveItems<&'a T>,
+    O: IndexContainer<usize>,
+{
+    fn reserve_items<I>(&mut self, items: I)
+    where
+        I: Iterator<Item = &'a Vec<T>> + Clone,
+    {
+        let len = items.clone().map(|item| item.len()).max().unwrap_or(0);
+        if len > 0 {
+            // Ensure all required regions exist.
+            while self.inner.len() < len {
+                self.inner.push(R::default());
+            }
+
+            for (index, region) in self.inner.iter_mut().enumerate() {
+                region.reserve_items(items.clone().filter_map(|item| item.get(index)));
+            }
+        }
     }
 }
 
@@ -642,7 +689,7 @@ mod tests {
             assert!(row.iter().eq(r.index(index).iter()));
         }
 
-        assert_eq!("1", r.index(indices[1]).get(0));
+        assert_eq!(Some("1"), r.index(indices[1]).get(0));
         assert_eq!(1, r.index(indices[1]).len());
         assert!(!r.index(indices[1]).is_empty());
         assert!(r.index(indices[0]).is_empty());
