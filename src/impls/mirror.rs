@@ -6,7 +6,9 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{CanPush, Index, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
+use crate::{
+    CanPush, Index, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush,
+};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -99,12 +101,21 @@ where
     }
 }
 
-impl<T> CanPush<T> for MirrorRegion<T>
+impl<T> TryPush<T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
 {
+    #[inline(always)]
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T> {
+        Ok(item)
+    }
+}
+
+impl<T> CanPush<T> for MirrorRegion<T> {
     fn can_push<'a, I>(&self, _: I) -> bool
     where
-        I: Iterator<Item=&'a T> + Clone,
-        T: 'a
+        I: Iterator<Item = &'a T> + Clone,
+        T: 'a,
     {
         true
     }
@@ -120,6 +131,16 @@ where
     }
 }
 
+impl<'b, T> TryPush<&'b T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
+    #[inline(always)]
+    fn try_push(&mut self, item: &'b T) -> Result<Self::Index, &'b T> {
+        Ok(*item)
+    }
+}
+
 impl<T> Push<&&T> for MirrorRegion<T>
 where
     for<'a> T: Index + IntoOwned<'a, Owned = T>,
@@ -127,6 +148,16 @@ where
     #[inline(always)]
     fn push(&mut self, item: &&T) -> T {
         **item
+    }
+}
+
+impl<'b, 'c, T> TryPush<&'b &'c T> for MirrorRegion<T>
+where
+    for<'a> T: Index + IntoOwned<'a, Owned = T>,
+{
+    #[inline(always)]
+    fn try_push(&mut self, item: &'b &'c T) -> Result<Self::Index, &'b &'c T> {
+        Ok(**item)
     }
 }
 

@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_owned::OwnedRegion;
-use crate::{Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
+use crate::{CanPush, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
 
 /// A region to store strings and read `&str`.
 ///
@@ -132,18 +132,30 @@ where
 
 impl<R> TryPush<String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+    for<'a> R:
+        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
 {
+    #[inline]
+    fn try_push(&mut self, item: String) -> Result<Self::Index, String> {
+        if self.can_push(std::iter::once(item.as_str())) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<R> CanPush<String> for StringRegion<R>
+where
+    R: CanPush<[u8]>,
+{
+    #[inline]
     fn can_push<'a, I>(&self, items: I) -> bool
     where
-        I: Iterator<Item=&'a String> + Clone,
-        String: 'a
+        I: Iterator<Item = &'a String> + Clone,
     {
-        todo!()
+        self.inner.can_push(items.map(|item| item.as_bytes()))
     }
-    // fn can_push(&self, item: &String) -> bool {
-    //     self.inner.can_push(&item.as_bytes())
-    // }
 }
 
 impl<'b, R> ReserveItems<&'b String> for StringRegion<R>
@@ -169,20 +181,32 @@ where
     }
 }
 
-impl<'b, R> TryPush<&'b str> for StringRegion<R>
+impl<R> TryPush<&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+    for<'a> R:
+        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
 {
+    #[inline]
+    fn try_push<'a>(&mut self, item: &'a str) -> Result<Self::Index, &'a str> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<R> CanPush<str> for StringRegion<R>
+where
+    R: CanPush<[u8]>,
+{
+    #[inline]
     fn can_push<'a, I>(&self, items: I) -> bool
     where
-        I: Iterator<Item=&'a &'b str> + Clone,
-        &'b str: 'a
+        I: Iterator<Item = &'a str> + Clone,
     {
-        todo!()
+        self.inner.can_push(items.map(|item| item.as_bytes()))
     }
-    // fn can_push(&self, item: &&str) -> bool {
-    //     self.inner.can_push(&item.as_bytes())
-    // }
 }
 
 impl<R> Push<&&str> for StringRegion<R>
@@ -195,20 +219,33 @@ where
     }
 }
 
-impl<'b, R> TryPush<&'b &'b str> for StringRegion<R>
+impl<R> TryPush<&&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+    for<'a> R:
+        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
 {
+    #[inline]
+    fn try_push<'a, 'b>(&mut self, item: &'a &'b str) -> Result<Self::Index, &'a &'b str> {
+        if self.can_push(std::iter::once(*item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'b, R> CanPush<&'b str> for StringRegion<R>
+where
+    R: CanPush<[u8]>,
+{
+    #[inline]
     fn can_push<'a, I>(&self, items: I) -> bool
     where
-        I: Iterator<Item=&'a &'b &'b str> + Clone,
-        &'b &'b str: 'a
+        I: Iterator<Item = &'a &'b str> + Clone,
+        'b: 'a,
     {
-        todo!()
+        self.inner.can_push(items.map(|item| item.as_bytes()))
     }
-    // fn can_push(&self, item: &&&str) -> bool {
-    //     self.inner.can_push(&item.as_bytes())
-    // }
 }
 
 impl<'b, R> ReserveItems<&'b str> for StringRegion<R>

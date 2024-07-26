@@ -4,7 +4,9 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{
+    CanPush, Index, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush,
+};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -26,7 +28,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name: Region + Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as Region>::Index: Index),*
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -42,7 +44,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as Region>::Index: Index),*
             {
                 type Owned = ($($name::Owned,)*);
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
@@ -124,14 +126,48 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name, [<$name _C>]),*> crate::CanPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            impl<$($name, [<$name _C>]),*> TryPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
-                $([<$name _C>]: Region + crate::CanPush<$name>),*
+                $([<$name _C>]: Region + Push<$name> + CanPush<$name>),*
+            {
+                #[inline]
+                fn try_push(&mut self, item: ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, ($($name,)*)> {
+                    if self.can_push(std::iter::once(&item)) {
+                        Ok(self.push(item))
+                    } else {
+                        Err(item)
+                    }
+                }
+            }
+
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]),*> TryPush<&($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + for<'a> Push<&'a $name> + CanPush<$name>),*
+            {
+                #[inline]
+                fn try_push<'a>(&mut self, item: &'a ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, &'a ($($name,)*)> {
+                    if self.can_push(std::iter::once(item)) {
+                        Ok(self.push(item))
+                    } else {
+                        Err(item)
+                    }
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]),*> CanPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + CanPush<$name>),*
             {
                 #[inline]
                 fn can_push<'a, It>(&self, items: It) -> bool
                 where
                     It: Iterator<Item = &'a ($($name,)*)> + Clone,
+                    $($name: 'a,)*
                 {
                     let can_push = true;
                     tuple_flatcontainer!(can_push can_push self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
@@ -202,9 +238,9 @@ macro_rules! tuple_flatcontainer {
             }
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name),*> crate::Reserve for [<Tuple $($name)* Region>]<$($name),*>
+            impl<$($name),*> Reserve for [<Tuple $($name)* Region>]<$($name),*>
             where
-                $($name: crate::Reserve),*
+                $($name: Reserve),*
             {
                 type Reserve = ($($name::Reserve,)*);
 

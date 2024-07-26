@@ -1,6 +1,6 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Push, Region, Reserve, ReserveItems};
+use crate::{CanPush, Push, Region, Reserve, ReserveItems, TryPush};
 
 impl<T: Clone> Region for Vec<T> {
     type Owned = T;
@@ -50,6 +50,16 @@ impl<T: Clone> Push<T> for Vec<T> {
     }
 }
 
+impl<T: Clone> TryPush<T> for Vec<T> {
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T> {
+        if self.can_push(std::iter::once(&item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
 impl<T: Clone> Push<&T> for Vec<T> {
     fn push(&mut self, item: &T) -> Self::Index {
         self.push(item.clone());
@@ -57,10 +67,51 @@ impl<T: Clone> Push<&T> for Vec<T> {
     }
 }
 
+impl<T: Clone> TryPush<&T> for Vec<T> {
+    fn try_push<'a>(&mut self, item: &'a T) -> Result<Self::Index, &'a T> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<T> CanPush<T> for Vec<T> {
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a T> + Clone,
+        T: 'a,
+    {
+        self.capacity() - self.len() >= items.count()
+    }
+}
+
 impl<T: Clone> Push<&&T> for Vec<T> {
     fn push(&mut self, item: &&T) -> Self::Index {
         self.push((*item).clone());
         self.len() - 1
+    }
+}
+
+impl<T: Clone> TryPush<&&T> for Vec<T> {
+    fn try_push<'a, 'b>(&mut self, item: &'a &'b T) -> Result<Self::Index, &'a &'b T> {
+        if self.can_push(std::iter::once(*item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'b, T> CanPush<&'b T> for Vec<T> {
+    #[inline]
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a &'b T> + Clone,
+        &'b T: 'a,
+    {
+        self.capacity() - self.len() >= items.count()
     }
 }
 

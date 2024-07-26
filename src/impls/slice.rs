@@ -8,7 +8,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::index::IndexContainer;
-use crate::{IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
+use crate::{CanPush, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
 
 impl<T: RegionPreference> RegionPreference for Vec<T> {
     type Owned = Vec<T::Owned>;
@@ -56,7 +56,7 @@ impl<T: RegionPreference, const N: usize> RegionPreference for [T; N] {
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SliceRegion<R: Region, O = Vec<<R as Region>::Index>> {
+pub struct SliceRegion<R, O = Vec<<R as Region>::Index>> {
     /// Container of slices.
     slices: O,
     /// Inner region.
@@ -416,17 +416,32 @@ where
     }
 }
 
-// impl<'a, C, T, O> TryPush<&'a [T]> for SliceRegion<C, O>
-// where
-//     C: Region + TryPush<&'a T>,
-//     O: IndexContainer<C::Index>,
-// {
-//     fn can_push(&self, item: &&'a [T]) -> bool {
-//         // TODO: Check `self.slices` for sufficient capacity.
-//         self.inner.can_push(item)
-//     }
-// }
+impl<'a, C, T, O> TryPush<&'a [T]> for SliceRegion<C, O>
+where
+    C: Region + TryPush<&'a T> + CanPush<T>,
+    O: IndexContainer<C::Index>,
+{
+    fn try_push(&mut self, item: &'a [T]) -> Result<Self::Index, &'a [T]> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
 
+impl<C, T, O> CanPush<[T]> for SliceRegion<C, O>
+where
+    C: Region + CanPush<T>,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a [T]> + Clone,
+        T: 'a,
+    {
+        self.inner.can_push(items.flatten())
+    }
+}
 
 impl<'a, T, R, O> ReserveItems<&'a [T]> for SliceRegion<R, O>
 where
@@ -457,6 +472,33 @@ where
     }
 }
 
+impl<'a, C, T, O> TryPush<Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + TryPush<T> + CanPush<T>,
+    O: IndexContainer<C::Index>,
+{
+    fn try_push(&mut self, item: Vec<T>) -> Result<Self::Index, Vec<T>> {
+        if self.can_push(std::iter::once(&item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<C, T, O> CanPush<Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + CanPush<T>,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a Vec<T>> + Clone,
+        T: 'a,
+    {
+        self.inner.can_push(items.flatten())
+    }
+}
+
 impl<C, T, O> Push<&Vec<T>> for SliceRegion<C, O>
 where
     for<'a> C: Region + Push<&'a T>,
@@ -468,6 +510,34 @@ where
     }
 }
 
+impl<'a, C, T, O> TryPush<&'a Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + for<'b> Push<&'b T> + CanPush<T>,
+    O: IndexContainer<C::Index>,
+{
+    fn try_push(&mut self, item: &'a Vec<T>) -> Result<Self::Index, &'a Vec<T>> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'b, C, T, O> CanPush<&'b Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + CanPush<T>,
+    T: 'b,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a &'b Vec<T>> + Clone,
+        &'b Vec<T>: 'a,
+    {
+        self.inner.can_push(items.map(|x| *x).flatten())
+    }
+}
+
 impl<'a, C, T, O> Push<&&'a Vec<T>> for SliceRegion<C, O>
 where
     C: Region + Push<&'a T>,
@@ -476,6 +546,33 @@ where
     #[inline]
     fn push(&mut self, item: &&'a Vec<T>) -> <SliceRegion<C, O> as Region>::Index {
         self.push(item.as_slice())
+    }
+}
+
+impl<C, T, O> TryPush<&&Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + for<'b> Push<&'b T> + CanPush<T>,
+    O: IndexContainer<C::Index>,
+{
+    fn try_push<'a, 'b>(&mut self, item: &'a &'b Vec<T>) -> Result<Self::Index, &'a &'b Vec<T>> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'b, 'c, C, T, O> CanPush<&'b &'c Vec<T>> for SliceRegion<C, O>
+where
+    C: Region + CanPush<T>,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a &'b &'c Vec<T>> + Clone,
+        &'b &'c Vec<T>: 'a,
+    {
+        self.inner.can_push(items.map(|x| **x).flatten())
     }
 }
 
@@ -514,6 +611,34 @@ where
     }
 }
 
+impl<'a, C, O> TryPush<ReadSlice<'a, C, O>> for SliceRegion<C, O>
+where
+    C: Region + Push<<C as Region>::ReadItem<'a>> + CanPush<C::ReadItem<'a>>,
+    O: IndexContainer<C::Index>,
+{
+    fn try_push(&mut self, item: ReadSlice<'a, C, O>) -> Result<Self::Index, ReadSlice<'a, C, O>> {
+        if self.can_push(std::iter::once(&item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'b, C, O> CanPush<ReadSlice<'b, C, O>> for SliceRegion<C, O>
+where
+    C: Region + CanPush<C::ReadItem<'b>>,
+    O: IndexContainer<C::Index>,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a ReadSlice<'b, C, O>> + Clone,
+        ReadSlice<'b, C, O>: 'a,
+    {
+        self.inner.can_push(items.copied().flatten())
+    }
+}
+
 impl<'a, C, O> Push<ReadSliceInner<'a, C, O>> for SliceRegion<C, O>
 where
     C: Region + Push<<C as Region>::ReadItem<'a>>,
@@ -534,12 +659,42 @@ where
 
 impl<T, R, O, const N: usize> Push<[T; N]> for SliceRegion<R, O>
 where
-    for<'a> R: Region + Push<&'a T>,
+    for<'a> R: Region + Push<T>,
     O: IndexContainer<R::Index>,
 {
     #[inline]
     fn push(&mut self, item: [T; N]) -> <SliceRegion<R, O> as Region>::Index {
-        self.push(item.as_slice())
+        let start = self.slices.len();
+        self.slices
+            .extend(item.into_iter().map(|t| self.inner.push(t)));
+        (start, self.slices.len())
+    }
+}
+
+impl<T, R, O, const N: usize> TryPush<[T; N]> for SliceRegion<R, O>
+where
+    for<'a> R: Region + Push<T> + CanPush<T>,
+    O: IndexContainer<R::Index>,
+{
+    fn try_push(&mut self, item: [T; N]) -> Result<Self::Index, [T; N]> {
+        if self.can_push(std::iter::once(&item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<T, R, O, const N: usize> CanPush<[T; N]> for SliceRegion<R, O>
+where
+    R: CanPush<T>,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a [T; N]> + Clone,
+        [T; N]: 'a,
+    {
+        self.inner.can_push(items.flatten())
     }
 }
 
@@ -551,6 +706,20 @@ where
     #[inline]
     fn push(&mut self, item: &'a [T; N]) -> <SliceRegion<R, O> as Region>::Index {
         self.push(item.as_slice())
+    }
+}
+
+impl<'a, T, R, O, const N: usize> TryPush<&'a [T; N]> for SliceRegion<R, O>
+where
+    R: Region + Push<&'a T> + CanPush<T>,
+    O: IndexContainer<R::Index>,
+{
+    fn try_push(&mut self, item: &'a [T; N]) -> Result<Self::Index, &'a [T; N]> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(self.push(item))
+        } else {
+            Err(item)
+        }
     }
 }
 

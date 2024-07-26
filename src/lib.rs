@@ -116,32 +116,18 @@ pub trait Push<T>: Region {
 pub trait TryPush<T>: Push<T> {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
-    // #[inline]
     fn try_push(&mut self, item: T) -> Result<Self::Index, T>;
-    //     if self.can_push(std::iter::once(&item)) {
-    //         Ok(self.push(item))
-    //     } else {
-    //         Err(item)
-    //     }
-    // }
 }
 
 /// Check if items can be pushed without reallocation
-pub trait CanPush<T> {
-    /// Test if an item can be pushed into the region without reallocation.
+pub trait CanPush<T: ?Sized> {
+    /// Test if an item can be pushed into the target without reallocation.
     #[must_use]
-    fn can_push<'a, I>(&self, items: I) -> bool where I: Iterator<Item=&'a T> + Clone, T: 'a;
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a T> + Clone,
+        T: 'a;
 }
-
-// impl<'c, T, C: CanPush<T>> CanPush<&'c T> for C {
-//     fn can_push<'a, I>(&self, items: I) -> bool
-//     where
-//         I: Iterator<Item=&'a &'c T> + Clone,
-//         &'c T: 'a
-//     {
-//         C::can_push(items.map(|item| *item))
-//     }
-// }
 
 /// Reserve space in the receiving region.
 ///
