@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_owned::OwnedRegion;
-use crate::{Push, Region, RegionPreference, ReserveItems};
+use crate::{Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
 
 /// A region to store strings and read `&str`.
 ///
@@ -130,6 +130,22 @@ where
     }
 }
 
+impl<R> TryPush<String> for StringRegion<R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item=&'a String> + Clone,
+        String: 'a
+    {
+        todo!()
+    }
+    // fn can_push(&self, item: &String) -> bool {
+    //     self.inner.can_push(&item.as_bytes())
+    // }
+}
+
 impl<'b, R> ReserveItems<&'b String> for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
@@ -153,6 +169,22 @@ where
     }
 }
 
+impl<'b, R> TryPush<&'b str> for StringRegion<R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item=&'a &'b str> + Clone,
+        &'b str: 'a
+    {
+        todo!()
+    }
+    // fn can_push(&self, item: &&str) -> bool {
+    //     self.inner.can_push(&item.as_bytes())
+    // }
+}
+
 impl<R> Push<&&str> for StringRegion<R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
@@ -161,6 +193,22 @@ where
     fn push(&mut self, item: &&str) -> <StringRegion<R> as Region>::Index {
         self.push(*item)
     }
+}
+
+impl<'b, R> TryPush<&'b &'b str> for StringRegion<R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + 'a,
+{
+    fn can_push<'a, I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item=&'a &'b &'b str> + Clone,
+        &'b &'b str: 'a
+    {
+        todo!()
+    }
+    // fn can_push(&self, item: &&&str) -> bool {
+    //     self.inner.can_push(&item.as_bytes())
+    // }
 }
 
 impl<'b, R> ReserveItems<&'b str> for StringRegion<R>
@@ -186,6 +234,14 @@ where
         I: Iterator<Item = &'a &'b str> + Clone,
     {
         self.reserve_items(items.copied());
+    }
+}
+
+impl<R: Reserve> Reserve for StringRegion<R> {
+    type Reserve = R::Reserve;
+
+    fn reserve(&mut self, size: &Self::Reserve) {
+        self.inner.reserve(size);
     }
 }
 

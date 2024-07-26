@@ -1,6 +1,6 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Push, Region, ReserveItems};
+use crate::{Push, Region, Reserve, ReserveItems};
 
 impl<T: Clone> Region for Vec<T> {
     type Owned = T;
@@ -70,6 +70,14 @@ impl<T: Clone, D> ReserveItems<D> for Vec<T> {
         I: Iterator<Item = D> + Clone,
     {
         self.reserve(items.count());
+    }
+}
+
+impl<T> Reserve for Vec<T> {
+    type Reserve = usize;
+
+    fn reserve(&mut self, size: &Self::Reserve) {
+        self.reserve(*size);
     }
 }
 

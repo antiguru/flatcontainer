@@ -8,7 +8,7 @@ use std::ops::{Deref, Range};
 use serde::{Deserialize, Serialize};
 
 use crate::impls::index::IndexContainer;
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
 
 impl<T: RegionPreference> RegionPreference for Vec<T> {
     type Owned = Vec<T::Owned>;
@@ -416,6 +416,18 @@ where
     }
 }
 
+// impl<'a, C, T, O> TryPush<&'a [T]> for SliceRegion<C, O>
+// where
+//     C: Region + TryPush<&'a T>,
+//     O: IndexContainer<C::Index>,
+// {
+//     fn can_push(&self, item: &&'a [T]) -> bool {
+//         // TODO: Check `self.slices` for sufficient capacity.
+//         self.inner.can_push(item)
+//     }
+// }
+
+
 impl<'a, T, R, O> ReserveItems<&'a [T]> for SliceRegion<R, O>
 where
     R: Region + ReserveItems<&'a T>,
@@ -578,6 +590,19 @@ where
         self.slices
             .reserve(items.clone().map(|read_slice| read_slice.len()).sum());
         self.inner.reserve_items(items.flatten());
+    }
+}
+
+impl<R, O> Reserve for SliceRegion<R, O>
+where
+    R: Reserve + Region,
+    O: IndexContainer<R::Index>,
+{
+    type Reserve = (usize, R::Reserve);
+
+    fn reserve(&mut self, (items, inner): &Self::Reserve) {
+        self.slices.reserve(*items);
+        self.inner.reserve(inner);
     }
 }
 

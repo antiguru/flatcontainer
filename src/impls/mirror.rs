@@ -6,7 +6,7 @@ use std::marker::PhantomData;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{Index, IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{CanPush, Index, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush};
 
 /// A region for types where the read item type is equal to the index type.
 ///
@@ -99,6 +99,17 @@ where
     }
 }
 
+impl<T> CanPush<T> for MirrorRegion<T>
+{
+    fn can_push<'a, I>(&self, _: I) -> bool
+    where
+        I: Iterator<Item=&'a T> + Clone,
+        T: 'a
+    {
+        true
+    }
+}
+
 impl<T> Push<&T> for MirrorRegion<T>
 where
     for<'a> T: Index + IntoOwned<'a, Owned = T>,
@@ -141,6 +152,14 @@ where
     where
         I: Iterator<Item = &'a T> + Clone,
     {
+        // No storage
+    }
+}
+
+impl<T> Reserve for MirrorRegion<T> {
+    type Reserve = ();
+
+    fn reserve(&mut self, (): &Self::Reserve) {
         // No storage
     }
 }

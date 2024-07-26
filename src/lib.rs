@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod impls;
 
-use crate::impls::index::IndexContainer;
 pub use impls::columns::ColumnsRegion;
+pub use impls::index::IndexContainer;
 pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
@@ -116,19 +116,32 @@ pub trait Push<T>: Region {
 pub trait TryPush<T>: Push<T> {
     /// Push `item` into self, returning an index that allows to look up the
     /// corresponding read item.
-    #[inline]
-    fn try_push(&mut self, item: T) -> Result<Self::Index, T> {
-        if self.can_push(&item) {
-            Ok(self.push(item))
-        } else {
-            Err(item)
-        }
-    }
+    // #[inline]
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T>;
+    //     if self.can_push(std::iter::once(&item)) {
+    //         Ok(self.push(item))
+    //     } else {
+    //         Err(item)
+    //     }
+    // }
+}
 
+/// Check if items can be pushed without reallocation
+pub trait CanPush<T> {
     /// Test if an item can be pushed into the region without reallocation.
     #[must_use]
-    fn can_push(&self, item: &T) -> bool;
+    fn can_push<'a, I>(&self, items: I) -> bool where I: Iterator<Item=&'a T> + Clone, T: 'a;
 }
+
+// impl<'c, T, C: CanPush<T>> CanPush<&'c T> for C {
+//     fn can_push<'a, I>(&self, items: I) -> bool
+//     where
+//         I: Iterator<Item=&'a &'c T> + Clone,
+//         &'c T: 'a
+//     {
+//         C::can_push(items.map(|item| *item))
+//     }
+// }
 
 /// Reserve space in the receiving region.
 ///
@@ -138,6 +151,14 @@ pub trait ReserveItems<T>: Region {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = T> + Clone;
+}
+
+/// Preallocate space based on a description.
+pub trait Reserve {
+    /// The type describing how to pre-size the region.
+    type Reserve;
+    /// Preallocate space for a size description.
+    fn reserve(&mut self, size: &Self::Reserve);
 }
 
 /// A reference type corresponding to an owned type, supporting conversion in each direction.
@@ -259,10 +280,10 @@ impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
     #[inline]
     pub fn can_push<T>(&mut self, item: &T) -> bool
     where
-        R: TryPush<T>,
+        R: CanPush<T>,
     {
         // TODO: Include `indices` in the check.
-        self.region.can_push(item)
+        self.region.can_push(std::iter::once(item))
     }
 
     /// Returns the element at the `index` position.
