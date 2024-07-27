@@ -120,13 +120,12 @@ pub trait TryPush<T>: Push<T> {
 }
 
 /// Check if items can be pushed without reallocation
-pub trait CanPush<T: ?Sized> {
+pub trait CanPush<T> {
     /// Test if an item can be pushed into the target without reallocation.
     #[must_use]
     fn can_push<'a, I>(&self, items: I) -> bool
     where
-        I: Iterator<Item = &'a T> + Clone,
-        T: 'a;
+        I: Iterator<Item = T> + Clone;
 }
 
 /// Reserve space in the receiving region.
@@ -266,7 +265,7 @@ impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
     #[inline]
     pub fn can_push<T>(&mut self, item: &T) -> bool
     where
-        R: CanPush<T>,
+        R: for<'a> CanPush<&'a T>,
     {
         // TODO: Include `indices` in the check.
         self.region.can_push(std::iter::once(item))

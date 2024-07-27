@@ -77,11 +77,13 @@ impl<T: Clone> TryPush<&T> for Vec<T> {
     }
 }
 
-impl<T> CanPush<T> for Vec<T> {
-    fn can_push<'a, I>(&self, items: I) -> bool
+impl<'a, T> CanPush<&'a T> for Vec<T>
+where
+    T: 'a,
+{
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a T> + Clone,
-        T: 'a,
     {
         self.capacity() - self.len() >= items.count()
     }
@@ -104,12 +106,14 @@ impl<T: Clone> TryPush<&&T> for Vec<T> {
     }
 }
 
-impl<'b, T> CanPush<&'b T> for Vec<T> {
+impl<'a, 'b, T> CanPush<&'a &'b T> for Vec<T>
+where
+    &'b T: 'a,
+{
     #[inline]
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a &'b T> + Clone,
-        &'b T: 'a,
     {
         self.capacity() - self.len() >= items.count()
     }

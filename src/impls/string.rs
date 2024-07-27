@@ -132,8 +132,11 @@ where
 
 impl<R> TryPush<String> for StringRegion<R>
 where
-    for<'a> R:
-        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]>
+        + TryPush<&'a [u8]>
+        + Push<&'a [u8]>
+        + CanPush<&'a [u8]>
+        + 'a,
 {
     #[inline]
     fn try_push(&mut self, item: String) -> Result<Self::Index, String> {
@@ -145,12 +148,12 @@ where
     }
 }
 
-impl<R> CanPush<String> for StringRegion<R>
+impl<'a, R> CanPush<&'a String> for StringRegion<R>
 where
-    R: CanPush<[u8]>,
+    R: CanPush<&'a [u8]>,
 {
     #[inline]
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a String> + Clone,
     {
@@ -183,8 +186,11 @@ where
 
 impl<R> TryPush<&str> for StringRegion<R>
 where
-    for<'a> R:
-        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]>
+        + TryPush<&'a [u8]>
+        + Push<&'a [u8]>
+        + CanPush<&'a [u8]>
+        + 'a,
 {
     #[inline]
     fn try_push<'a>(&mut self, item: &'a str) -> Result<Self::Index, &'a str> {
@@ -196,12 +202,12 @@ where
     }
 }
 
-impl<R> CanPush<str> for StringRegion<R>
+impl<'a, R> CanPush<&'a str> for StringRegion<R>
 where
-    R: CanPush<[u8]>,
+    R: CanPush<&'a [u8]>,
 {
     #[inline]
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a str> + Clone,
     {
@@ -221,8 +227,11 @@ where
 
 impl<R> TryPush<&&str> for StringRegion<R>
 where
-    for<'a> R:
-        Region<ReadItem<'a> = &'a [u8]> + TryPush<&'a [u8]> + Push<&'a [u8]> + CanPush<[u8]> + 'a,
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]>
+        + TryPush<&'a [u8]>
+        + Push<&'a [u8]>
+        + CanPush<&'a [u8]>
+        + 'a,
 {
     #[inline]
     fn try_push<'a, 'b>(&mut self, item: &'a &'b str) -> Result<Self::Index, &'a &'b str> {
@@ -234,15 +243,15 @@ where
     }
 }
 
-impl<'b, R> CanPush<&'b str> for StringRegion<R>
+impl<'a, 'b, R> CanPush<&'a &'b str> for StringRegion<R>
 where
-    R: CanPush<[u8]>,
+    R: CanPush<&'b [u8]>,
+    'b: 'a,
 {
     #[inline]
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a &'b str> + Clone,
-        'b: 'a,
     {
         self.inner.can_push(items.map(|item| item.as_bytes()))
     }

@@ -128,7 +128,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name, [<$name _C>]),*> TryPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
-                $([<$name _C>]: Region + Push<$name> + CanPush<$name>),*
+                $([<$name _C>]: Region + Push<$name> + for<'a> CanPush<&'a $name>),*
             {
                 #[inline]
                 fn try_push(&mut self, item: ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, ($($name,)*)> {
@@ -145,7 +145,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name, [<$name _C>]),*> TryPush<&($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
-                $([<$name _C>]: Region + for<'a> Push<&'a $name> + CanPush<$name>),*
+                $(for<'a> [<$name _C>]: Region + Push<&'a $name> + CanPush<&'a $name>),*
             {
                 #[inline]
                 fn try_push<'a>(&mut self, item: &'a ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, &'a ($($name,)*)> {
@@ -159,15 +159,15 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            impl<$($name, [<$name _C>]),*> CanPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            impl<'a, $($name, [<$name _C>]),*> CanPush<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
-                $([<$name _C>]: Region + CanPush<$name>),*
+                $([<$name _C>]: Region + CanPush<&'a $name> + 'a),*
+                // $($name: 'a,)*
             {
                 #[inline]
-                fn can_push<'a, It>(&self, items: It) -> bool
+                fn can_push<It>(&self, items: It) -> bool
                 where
                     It: Iterator<Item = &'a ($($name,)*)> + Clone,
-                    $($name: 'a,)*
                 {
                     let can_push = true;
                     tuple_flatcontainer!(can_push can_push self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);

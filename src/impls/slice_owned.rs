@@ -128,14 +128,14 @@ where
     }
 }
 
-impl<T, S> CanPush<[T]> for OwnedRegion<T, S>
+impl<'a, T, S> CanPush<&'a [T]> for OwnedRegion<T, S>
 where
     S: Storage<T>,
+    T: 'a,
 {
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a [T]> + Clone,
-        T: 'a,
     {
         let required = items.map(|item| item.len()).sum();
         self.slices.capacity() - self.slices.len() >= required
@@ -171,14 +171,14 @@ where
     }
 }
 
-impl<T, S, const N: usize> CanPush<[T; N]> for OwnedRegion<T, S>
+impl<'a, T, S, const N: usize> CanPush<&'a [T; N]> for OwnedRegion<T, S>
 where
     S: Storage<T>,
+    T: 'a,
 {
-    fn can_push<'a, I>(&self, items: I) -> bool
+    fn can_push<I>(&self, items: I) -> bool
     where
         I: Iterator<Item = &'a [T; N]> + Clone,
-        T: 'a,
     {
         let required = items.count() * N;
         self.slices.capacity() - self.slices.len() >= required

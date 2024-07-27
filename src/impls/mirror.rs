@@ -112,10 +112,9 @@ where
 }
 
 impl<T> CanPush<T> for MirrorRegion<T> {
-    fn can_push<'a, I>(&self, _: I) -> bool
+    fn can_push<I>(&self, _: I) -> bool
     where
-        I: Iterator<Item = &'a T> + Clone,
-        T: 'a,
+        I: Iterator<Item = T> + Clone,
     {
         true
     }
@@ -128,6 +127,15 @@ where
     #[inline(always)]
     fn push(&mut self, item: &T) -> T {
         *item
+    }
+}
+
+impl<'a, T> CanPush<&'a T> for MirrorRegion<T> {
+    fn can_push<I>(&self, _: I) -> bool
+    where
+        I: Iterator<Item = &'a T> + Clone,
+    {
+        true
     }
 }
 
