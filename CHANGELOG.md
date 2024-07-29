@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0](https://github.com/antiguru/flatcontainer/compare/v0.5.0...v0.6.0) - 2024-07-15
+
+### Other
+- Support bencher and codspeed ([#60](https://github.com/antiguru/flatcontainer/pull/60))
+- Rename offset to index to better capture its meaning ([#55](https://github.com/antiguru/flatcontainer/pull/55))
+- Only output throughput if BYTES is set ([#56](https://github.com/antiguru/flatcontainer/pull/56))
+- Simplify offset iterators and enable clone ([#53](https://github.com/antiguru/flatcontainer/pull/53))
+- use OffsetContainer iter ([#52](https://github.com/antiguru/flatcontainer/pull/52))
+- Rename slice_copy to slice_owned ([#51](https://github.com/antiguru/flatcontainer/pull/51))
+- Rename CopyIter to PushIter ([#50](https://github.com/antiguru/flatcontainer/pull/50))
+- Separate data storage ([#19](https://github.com/antiguru/flatcontainer/pull/19))
+
 ## [0.5.0](https://github.com/antiguru/flatcontainer/compare/v0.4.1...v0.5.0) - 2024-06-26
 
 ### Other
