@@ -19,7 +19,7 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Build the codspeed binary
-        run: cargo install cargo-codspeed
+        run: cargo install --git https://github.com/antiguru/codspeed-rust --branch bump_versions
 
       - name: Build the benchmark targets
         run: cargo codspeed build
