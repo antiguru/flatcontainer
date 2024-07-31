@@ -1,6 +1,6 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Push, Region, ReserveItems};
+use crate::{CanPush, Push, Region, Reserve, ReserveItems, TryPush};
 
 impl<T: Clone> Region for Vec<T> {
     type Owned = T;
@@ -50,10 +50,42 @@ impl<T: Clone> Push<T> for Vec<T> {
     }
 }
 
+impl<T: Clone> TryPush<T> for Vec<T> {
+    fn try_push(&mut self, item: T) -> Result<Self::Index, T> {
+        if self.can_push(std::iter::once(&item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
 impl<T: Clone> Push<&T> for Vec<T> {
     fn push(&mut self, item: &T) -> Self::Index {
         self.push(item.clone());
         self.len() - 1
+    }
+}
+
+impl<T: Clone> TryPush<&T> for Vec<T> {
+    fn try_push<'a>(&mut self, item: &'a T) -> Result<Self::Index, &'a T> {
+        if self.can_push(std::iter::once(item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'a, T> CanPush<&'a T> for Vec<T>
+where
+    T: 'a,
+{
+    fn can_push<I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a T> + Clone,
+    {
+        self.capacity() - self.len() >= items.count()
     }
 }
 
@@ -64,12 +96,43 @@ impl<T: Clone> Push<&&T> for Vec<T> {
     }
 }
 
+impl<T: Clone> TryPush<&&T> for Vec<T> {
+    fn try_push<'a, 'b>(&mut self, item: &'a &'b T) -> Result<Self::Index, &'a &'b T> {
+        if self.can_push(std::iter::once(*item)) {
+            Ok(Push::push(self, item))
+        } else {
+            Err(item)
+        }
+    }
+}
+
+impl<'a, 'b, T> CanPush<&'a &'b T> for Vec<T>
+where
+    &'b T: 'a,
+{
+    #[inline]
+    fn can_push<I>(&self, items: I) -> bool
+    where
+        I: Iterator<Item = &'a &'b T> + Clone,
+    {
+        self.capacity() - self.len() >= items.count()
+    }
+}
+
 impl<T: Clone, D> ReserveItems<D> for Vec<T> {
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = D> + Clone,
     {
         self.reserve(items.count());
+    }
+}
+
+impl<T> Reserve for Vec<T> {
+    type Reserve = usize;
+
+    fn reserve(&mut self, size: &Self::Reserve) {
+        self.reserve(*size);
     }
 }
 

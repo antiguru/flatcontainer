@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems};
 
 impl<T: RegionPreference, E: RegionPreference> RegionPreference for Result<T, E> {
     type Owned = Result<T::Owned, E::Owned>;
@@ -191,6 +191,19 @@ where
             .reserve_items(items.clone().filter_map(|r| r.as_ref().ok()));
         self.errs
             .reserve_items(items.filter_map(|r| r.as_ref().err()));
+    }
+}
+
+impl<T, E> Reserve for ResultRegion<T, E>
+where
+    T: Reserve,
+    E: Reserve,
+{
+    type Reserve = (T::Reserve, E::Reserve);
+
+    fn reserve(&mut self, (t, e): &Self::Reserve) {
+        self.oks.reserve(t);
+        self.errs.reserve(e);
     }
 }
 

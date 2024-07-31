@@ -3,7 +3,7 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems};
 
 impl<T: RegionPreference> RegionPreference for Option<T> {
     type Owned = Option<T::Owned>;
@@ -164,6 +164,17 @@ where
         I: Iterator<Item = &'a Option<T>> + Clone,
     {
         self.inner.reserve_items(items.filter_map(|r| r.as_ref()));
+    }
+}
+
+impl<R> Reserve for OptionRegion<R>
+where
+    R: Reserve,
+{
+    type Reserve = R::Reserve;
+
+    fn reserve(&mut self, size: &Self::Reserve) {
+        self.inner.reserve(size);
     }
 }
 

@@ -4,7 +4,9 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{
+    CanPush, Index, IntoOwned, Push, Region, RegionPreference, Reserve, ReserveItems, TryPush,
+};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -26,7 +28,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name: Region + Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as Region>::Index: Index),*
             {
                 fn clone(&self) -> Self {
                     Self {
@@ -42,7 +44,7 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
             where
-               $(<$name as Region>::Index: crate::Index),*
+               $(<$name as Region>::Index: Index),*
             {
                 type Owned = ($($name::Owned,)*);
                 type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
@@ -124,6 +126,57 @@ macro_rules! tuple_flatcontainer {
 
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]),*> TryPush<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + Push<$name> + for<'a> CanPush<&'a $name>),*
+            {
+                #[inline]
+                fn try_push(&mut self, item: ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, ($($name,)*)> {
+                    if self.can_push(std::iter::once(&item)) {
+                        Ok(self.push(item))
+                    } else {
+                        Err(item)
+                    }
+                }
+            }
+
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name, [<$name _C>]),*> TryPush<&($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $(for<'a> [<$name _C>]: Region + Push<&'a $name> + CanPush<&'a $name>),*
+            {
+                #[inline]
+                fn try_push<'a>(&mut self, item: &'a ($($name,)*)) -> Result<<[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index, &'a ($($name,)*)> {
+                    if self.can_push(std::iter::once(item)) {
+                        Ok(self.push(item))
+                    } else {
+                        Err(item)
+                    }
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<'a, $($name, [<$name _C>]),*> CanPush<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
+            where
+                $([<$name _C>]: Region + CanPush<&'a $name> + 'a),*
+                // $($name: 'a,)*
+            {
+                #[inline]
+                fn can_push<It>(&self, items: It) -> bool
+                where
+                    It: Iterator<Item = &'a ($($name,)*)> + Clone,
+                {
+                    let can_push = true;
+                    tuple_flatcontainer!(can_push can_push self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                    can_push
+                }
+            }
+
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
             impl<'a, $($name),*> IntoOwned<'a> for ($($name,)*)
             where
                 $($name: IntoOwned<'a>),*
@@ -165,7 +218,7 @@ macro_rules! tuple_flatcontainer {
                 where
                     It: Iterator<Item = &'a ($($name,)*)> + Clone,
                 {
-                        tuple_flatcontainer!(reserve_items self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                    tuple_flatcontainer!(reserve_items self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
                 }
             }
 
@@ -180,11 +233,32 @@ macro_rules! tuple_flatcontainer {
                 where
                     It: Iterator<Item = ($($name,)*)> + Clone,
                 {
-                        tuple_flatcontainer!(reserve_items_owned self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                    tuple_flatcontainer!(reserve_items_owned self items $($name)* @ 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31);
+                }
+            }
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            impl<$($name),*> Reserve for [<Tuple $($name)* Region>]<$($name),*>
+            where
+                $($name: Reserve),*
+            {
+                type Reserve = ($($name::Reserve,)*);
+
+                #[inline]
+                fn reserve(&mut self, size: &Self::Reserve) {
+                    let ($([<$name _size>],)*) = size;
+                    $(self.[<container $name>].reserve([<$name _size>]);)*
                 }
             }
         }
     );
+    (can_push $var:ident $self:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
+        paste! {
+            let $var = $var && $self.[<container $name0>].can_push($items.clone().map(|i| &i.$num0));
+            tuple_flatcontainer!(can_push $var $self $items $($name)* @ $($num)*);
+        }
+    };
+    (can_push $var:ident $self:ident $items:ident @ $($num:tt)*) => {};
     (reserve_items $self:ident $items:ident $name0:ident $($name:ident)* @ $num0:tt $($num:tt)*) => {
         paste! {
             $self.[<container $name0>].reserve_items($items.clone().map(|i| &i.$num0));

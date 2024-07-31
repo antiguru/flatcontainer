@@ -248,7 +248,11 @@ where
     /// Reserve space for `additional` elements.
     #[inline]
     pub fn reserve(&mut self, additional: usize) {
-        self.smol.reserve(additional);
+        if self.chonk.is_empty() {
+            self.smol.reserve(additional);
+        } else {
+            self.chonk.reserve(additional);
+        }
     }
 
     /// Remove all elements.
@@ -298,6 +302,15 @@ where
     #[inline]
     fn is_empty(&self) -> bool {
         self.is_empty()
+    }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        if self.chonk.is_empty() {
+            self.smol.capacity()
+        } else {
+            self.chonk.capacity()
+        }
     }
 }
 
@@ -407,6 +420,16 @@ where
     fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
         self.spilled.heap_size(callback);
     }
+
+    #[inline]
+    fn capacity(&self) -> usize {
+        if self.spilled.is_empty() {
+            // TODO: What else could we do here? `usize::MAX`?
+            1
+        } else {
+            self.spilled.capacity()
+        }
+    }
 }
 
 impl<S, L> IndexContainer<usize> for IndexOptimized<S, L>
@@ -439,8 +462,25 @@ where
     where
         I::IntoIter: ExactSizeIterator,
     {
-        for item in iter {
-            self.push(item);
+        let mut iter = iter.into_iter();
+        if !self.spilled.is_empty() {
+            // We certainly push into `spilled`, so reserve enough space.
+            let (lower, upper) = iter.size_hint();
+            self.spilled.reserve(upper.unwrap_or(lower));
+        }
+        while let Some(item) = iter.next() {
+            if self.spilled.is_empty() {
+                let inserted = self.strided.push(item);
+                if !inserted {
+                    // This is a transition point from pushing into `strided` to pushing into
+                    // `spilled`.
+                    let (lower, upper) = iter.size_hint();
+                    self.spilled.reserve(upper.unwrap_or(lower));
+                    self.spilled.push(item);
+                }
+            } else {
+                self.spilled.push(item);
+            }
         }
     }
 
