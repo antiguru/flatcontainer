@@ -63,6 +63,19 @@ impl<T: RegionPreference + ?Sized> RegionPreference for &T {
 pub trait Push<T> {
     /// Push `item` into self.
     fn push(&mut self, item: T);
+
+    /// Pushes many items into self.
+    fn push_extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        for item in iter {
+            self.push(item);
+        }
+    }
+}
+
+/// TODO
+pub trait PushSlice<T> {
+    /// TODO
+    fn push_slice(&mut self, slice: &[T]);
 }
 
 /// Reserve space in the receiving region.

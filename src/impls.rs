@@ -5,7 +5,6 @@
 // pub mod deduplicate;
 // pub mod huffman_container;
 // pub mod index;
-// pub mod mirror;
 pub mod option;
 pub mod result;
 pub mod slice;

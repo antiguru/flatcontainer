@@ -1,6 +1,6 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Clear, HeapSize, Index, IndexAs, Len, Push, Region, Reserve, ReserveItems};
+use crate::{Clear, HeapSize, Index, IndexAs, Len, Push, PushSlice, Region, Reserve, ReserveItems};
 
 impl<T> Region for Vec<T> {
     #[inline(always)]
@@ -49,18 +49,30 @@ impl<T: Clone> Push<T> for Vec<T> {
     fn push(&mut self, item: T) {
         self.push(item);
     }
+
+    #[inline(always)]
+    fn push_extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        Extend::extend(self, iter);
+    }
 }
 
-impl<T: Clone> Push<&T> for Vec<T> {
+impl<T: Clone> PushSlice<T> for Vec<T> {
     #[inline(always)]
-    fn push(&mut self, item: &T) {
+    fn push_slice(&mut self, slice: &[T]) {
+        self.extend_from_slice(slice);
+    }
+}
+
+impl<'a, T: Clone> Push<&'a T> for Vec<T> {
+    #[inline(always)]
+    fn push(&mut self, item: &'a T) {
         self.push(item.clone());
     }
 }
 
-impl<T: Clone> Push<&&T> for Vec<T> {
+impl<'a, 'b, T: Clone> Push<&'a &'b T> for Vec<T> {
     #[inline(always)]
-    fn push(&mut self, item: &&T) {
+    fn push(&mut self, item: &'a &'b T) {
         self.push((*item).clone());
     }
 }

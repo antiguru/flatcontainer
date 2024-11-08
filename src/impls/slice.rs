@@ -437,9 +437,7 @@ where
 {
     #[inline]
     fn push(&mut self, items: &'a [T]) {
-        for item in items.iter() {
-            self.inner.push(item);
-        }
+        self.inner.push_extend(items);
         self.bounds
             .push(self.inner.len().try_into().expect("must fit"));
     }

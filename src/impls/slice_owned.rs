@@ -6,7 +6,9 @@ use std::marker::PhantomData;
 use serde::{Deserialize, Serialize};
 
 // use crate::impls::storage::{PushStorage, Storage};
-use crate::{Clear, HeapSize, Index, IndexAs, Len, Push, PushIter, Region, Reserve, ReserveItems};
+use crate::{
+    Clear, HeapSize, Index, IndexAs, Len, Push, PushIter, PushSlice, Region, Reserve, ReserveItems,
+};
 
 type Idx = u64;
 
@@ -174,9 +176,7 @@ where
 {
     #[inline]
     fn push(&mut self, items: [T; N]) {
-        for item in items {
-            self.slices.push(item);
-        }
+        self.slices.push_extend(items);
         self.bounds
             .push(self.slices.len().try_into().expect("must fit"));
     }
@@ -220,14 +220,12 @@ where
 impl<T, S, B> Push<&[T]> for OwnedRegion<T, S, B>
 where
     T: Clone,
-    S: for<'a> Push<&'a T> + Len,
+    S: PushSlice<T> + Len,
     B: Push<Idx>,
 {
     #[inline]
     fn push(&mut self, items: &[T]) {
-        for item in items {
-            self.slices.push(item);
-        }
+        self.slices.push_slice(items);
         self.bounds
             .push(self.slices.len().try_into().expect("must fit"));
     }
