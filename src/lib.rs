@@ -3,12 +3,16 @@
 
 use std::borrow::Borrow;
 
+mod bitmap;
 pub mod impls;
+mod primitive;
+mod rank_select;
+// pub mod storage;
 
 // use crate::impls::index::IndexContainer;
 // pub use impls::columns::ColumnsRegion;
 // pub use impls::mirror::MirrorRegion;
-// pub use impls::option::OptionRegion;
+pub use impls::option::OptionRegion;
 // pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_owned::OwnedRegion;
@@ -444,154 +448,191 @@ pub trait Index {
     // {
     //     item
     // }
+
+    /// TODO
+    fn iter(&self) -> IntoIter<'_, Self>
+    where
+        Self: Len + Sized,
+    {
+        IntoIter {
+            index: 0,
+            region: self,
+        }
+    }
 }
 
-/*
+#[derive(Clone, Copy, Debug)]
+/// TODO
+pub struct IntoIter<'a, R: Index + Len> {
+    /// TODO
+    index: usize,
+    /// TODO
+    region: &'a R,
+}
+
+impl<'a, R: Index + Len> Iterator for IntoIter<'a, R> {
+    type Item = R::ReadItem<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.region.len() {
+            let item = self.region.index(self.index);
+            self.index += 1;
+            Some(item)
+        } else {
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    // use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
-    // use crate::impls::tuple::TupleARegion;
+    use std::fmt::Debug;
+
+    use crate::impls::tuple::TupleARegion;
 
     use super::*;
 
-    fn copy<R: Region + Push<T>, T>(r: &mut R, item: T) -> R::Index {
-        r.push(item)
-    }
-
-    #[test]
-    fn test_readme() {
-        let r: Result<_, u16> = Ok("abc");
-        let mut c = FlatStack::default_impl::<Result<&str, u16>>();
-        c.copy(r);
-        assert_eq!(r, c.get(0));
-    }
+    // #[test]
+    // fn test_readme() {
+    //     let r: Result<_, u16> = Ok("abc");
+    //     let mut c = FlatStack::default_impl::<Result<&str, u16>>();
+    //     c.copy(r);
+    //     assert_eq!(r, c.get(0));
+    // }
 
     #[test]
     fn test_slice_string_onto() {
         let mut c = <StringRegion>::default();
-        let index = c.push("abc".to_string());
-        assert_eq!("abc", c.index(index));
-        let index = c.push("def");
-        assert_eq!("def", c.index(index));
+        c.push("abc".to_string());
+        assert_eq!("abc", c.index(0));
+        c.push("def");
+        assert_eq!("def", c.index(1));
     }
 
     #[test]
     fn test_container_string() {
-        let mut c = FlatStack::default_impl::<String>();
-        c.copy(&"abc".to_string());
-        assert_eq!("abc", c.get(0));
-        c.copy("def");
-        assert_eq!("def", c.get(1));
+        let mut c = <String as RegionPreference>::Region::default();
+        c.push(&"abc".to_string());
+        assert_eq!("abc", c.index(0));
+        c.push("def");
+        assert_eq!("def", c.index(1));
     }
 
     #[test]
     fn test_vec() {
-        let mut c = <SliceRegion<MirrorRegion<_>>>::default();
+        let mut c = <SliceRegion<Vec<u8>>>::default();
         let slice = &[1u8, 2, 3];
-        let idx = c.push(slice);
-        assert!(slice.iter().copied().eq(c.index(idx)));
+        c.push(slice);
+        assert!(slice.iter().eq(c.index(0)));
     }
 
     #[test]
     fn test_vec_onto() {
-        let mut c = <SliceRegion<MirrorRegion<u8>>>::default();
+        let mut c = <SliceRegion<Vec<u8>>>::default();
         let slice = &[1u8, 2, 3][..];
-        let idx = c.push(slice);
-        assert!(slice.iter().copied().eq(c.index(idx)));
+        c.push(slice);
+        assert!(slice.iter().eq(c.index(0)));
     }
 
-    #[test]
-    fn test_result() {
-        let r: Result<_, u16> = Ok("abc");
-        let mut c = <ResultRegion<StringRegion, MirrorRegion<_>>>::default();
-        let idx = copy(&mut c, r);
-        assert_eq!(r, c.index(idx));
-    }
+    // #[test]
+    // fn test_result() {
+    //     let r: Result<_, u16> = Ok("abc");
+    //     let mut c = <ResultRegion<StringRegion, MirrorRegion<_>>>::default();
+    //     let idx = copy(&mut c, r);
+    //     assert_eq!(r, c.index(idx));
+    // }
 
     #[test]
     fn all_types() {
-        fn test_copy<T, R: Region + Clone>(t: T)
+        fn test_copy<T, R>(t: T)
         where
-            for<'a> R: Push<T> + Push<<R as Region>::ReadItem<'a>>,
+            for<'a> R: Region
+                + Default
+                + Push<T>
+                + Push<<R as Index>::ReadItem<'a>>
+                + Index
+                + Clone
+                + Clear
+        + HeapSize + Len,
             // Make sure that types are debug, even if we don't use this in the test.
             for<'a> R::ReadItem<'a>: Debug,
         {
-            let mut c = FlatStack::<_>::default();
-            c.copy(t);
+            let mut c = R::default();
+            c.push(t);
 
             let mut cc = c.clone();
-            cc.copy(c.get(0));
+            cc.push(c.index(0));
 
             c.clear();
 
             let mut r = R::default();
-            let _ = r.push(cc.get(0));
+            let _ = r.push(cc.index(0));
 
             c.reserve_regions(std::iter::once(&r));
 
-            let mut c = FlatStack::merge_capacity(std::iter::once(&c));
-            c.copy(cc.get(0));
+            let mut c = R::merge_regions(std::iter::once(&c));
+            c.push(cc.index(0));
         }
 
         test_copy::<_, StringRegion>(&"a".to_string());
         test_copy::<_, StringRegion>("a".to_string());
         test_copy::<_, StringRegion>("a");
 
-        test_copy::<_, MirrorRegion<()>>(());
-        test_copy::<_, MirrorRegion<()>>(&());
-        test_copy::<_, MirrorRegion<bool>>(true);
-        test_copy::<_, MirrorRegion<bool>>(&true);
-        test_copy::<_, MirrorRegion<char>>(' ');
-        test_copy::<_, MirrorRegion<char>>(&' ');
-        test_copy::<_, MirrorRegion<u8>>(0u8);
-        test_copy::<_, MirrorRegion<u8>>(&0u8);
-        test_copy::<_, MirrorRegion<u16>>(0u16);
-        test_copy::<_, MirrorRegion<u16>>(&0u16);
-        test_copy::<_, MirrorRegion<u32>>(0u32);
-        test_copy::<_, MirrorRegion<u32>>(&0u32);
-        test_copy::<_, MirrorRegion<u64>>(0u64);
-        test_copy::<_, MirrorRegion<u64>>(&0u64);
-        test_copy::<_, MirrorRegion<u128>>(0u128);
-        test_copy::<_, MirrorRegion<u128>>(&0u128);
-        test_copy::<_, MirrorRegion<usize>>(0usize);
-        test_copy::<_, MirrorRegion<usize>>(&0usize);
-        test_copy::<_, MirrorRegion<i8>>(0i8);
-        test_copy::<_, MirrorRegion<i8>>(&0i8);
-        test_copy::<_, MirrorRegion<i16>>(0i16);
-        test_copy::<_, MirrorRegion<i16>>(&0i16);
-        test_copy::<_, MirrorRegion<i32>>(0i32);
-        test_copy::<_, MirrorRegion<i32>>(&0i32);
-        test_copy::<_, MirrorRegion<i64>>(0i64);
-        test_copy::<_, MirrorRegion<i64>>(&0i64);
-        test_copy::<_, MirrorRegion<i128>>(0i128);
-        test_copy::<_, MirrorRegion<i128>>(&0i128);
-        test_copy::<_, MirrorRegion<isize>>(0isize);
-        test_copy::<_, MirrorRegion<isize>>(&0isize);
-        test_copy::<_, MirrorRegion<f32>>(0f32);
-        test_copy::<_, MirrorRegion<f32>>(&0f32);
-        test_copy::<_, MirrorRegion<f64>>(0f64);
-        test_copy::<_, MirrorRegion<f64>>(&0f64);
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(std::num::Wrapping(0i8));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(&std::num::Wrapping(0i8));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(std::num::Wrapping(0i16));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(&std::num::Wrapping(0i16));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(std::num::Wrapping(0i32));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(&std::num::Wrapping(0i32));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(std::num::Wrapping(0i64));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(&std::num::Wrapping(0i64));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(std::num::Wrapping(0i128));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(&std::num::Wrapping(0i128));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(std::num::Wrapping(0isize));
-        test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(&std::num::Wrapping(0isize));
-
-        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Ok(0));
-        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Ok(0));
-        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Err(0));
-        test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Err(0));
-
-        test_copy::<_, SliceRegion<MirrorRegion<u8>>>([0u8].as_slice());
-        test_copy::<_, SliceRegion<MirrorRegion<u8>>>(vec![0u8]);
-        test_copy::<_, SliceRegion<MirrorRegion<u8>>>(&vec![0u8]);
+        // test_copy::<_, MirrorRegion<()>>(());
+        // test_copy::<_, MirrorRegion<()>>(&());
+        // test_copy::<_, MirrorRegion<bool>>(true);
+        // test_copy::<_, MirrorRegion<bool>>(&true);
+        // test_copy::<_, MirrorRegion<char>>(' ');
+        // test_copy::<_, MirrorRegion<char>>(&' ');
+        // test_copy::<_, MirrorRegion<u8>>(0u8);
+        // test_copy::<_, MirrorRegion<u8>>(&0u8);
+        // test_copy::<_, MirrorRegion<u16>>(0u16);
+        // test_copy::<_, MirrorRegion<u16>>(&0u16);
+        // test_copy::<_, MirrorRegion<u32>>(0u32);
+        // test_copy::<_, MirrorRegion<u32>>(&0u32);
+        // test_copy::<_, MirrorRegion<u64>>(0u64);
+        // test_copy::<_, MirrorRegion<u64>>(&0u64);
+        // test_copy::<_, MirrorRegion<u128>>(0u128);
+        // test_copy::<_, MirrorRegion<u128>>(&0u128);
+        // test_copy::<_, MirrorRegion<usize>>(0usize);
+        // test_copy::<_, MirrorRegion<usize>>(&0usize);
+        // test_copy::<_, MirrorRegion<i8>>(0i8);
+        // test_copy::<_, MirrorRegion<i8>>(&0i8);
+        // test_copy::<_, MirrorRegion<i16>>(0i16);
+        // test_copy::<_, MirrorRegion<i16>>(&0i16);
+        // test_copy::<_, MirrorRegion<i32>>(0i32);
+        // test_copy::<_, MirrorRegion<i32>>(&0i32);
+        // test_copy::<_, MirrorRegion<i64>>(0i64);
+        // test_copy::<_, MirrorRegion<i64>>(&0i64);
+        // test_copy::<_, MirrorRegion<i128>>(0i128);
+        // test_copy::<_, MirrorRegion<i128>>(&0i128);
+        // test_copy::<_, MirrorRegion<isize>>(0isize);
+        // test_copy::<_, MirrorRegion<isize>>(&0isize);
+        // test_copy::<_, MirrorRegion<f32>>(0f32);
+        // test_copy::<_, MirrorRegion<f32>>(&0f32);
+        // test_copy::<_, MirrorRegion<f64>>(0f64);
+        // test_copy::<_, MirrorRegion<f64>>(&0f64);
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(std::num::Wrapping(0i8));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i8>>>(&std::num::Wrapping(0i8));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(std::num::Wrapping(0i16));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i16>>>(&std::num::Wrapping(0i16));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(std::num::Wrapping(0i32));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i32>>>(&std::num::Wrapping(0i32));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(std::num::Wrapping(0i64));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i64>>>(&std::num::Wrapping(0i64));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(std::num::Wrapping(0i128));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<i128>>>(&std::num::Wrapping(0i128));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(std::num::Wrapping(0isize));
+        // test_copy::<_, MirrorRegion<std::num::Wrapping<isize>>>(&std::num::Wrapping(0isize));
+        //
+        // test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Ok(0));
+        // test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Ok(0));
+        // test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(Result::<u8, u8>::Err(0));
+        // test_copy::<_, ResultRegion<MirrorRegion<u8>, MirrorRegion<u8>>>(&Result::<u8, u8>::Err(0));
+        //
+        // test_copy::<_, SliceRegion<MirrorRegion<u8>>>([0u8].as_slice());
+        // test_copy::<_, SliceRegion<MirrorRegion<u8>>>(vec![0u8]);
+        // test_copy::<_, SliceRegion<MirrorRegion<u8>>>(&vec![0u8]);
 
         test_copy::<_, SliceRegion<StringRegion>>(["a"].as_slice());
         test_copy::<_, SliceRegion<StringRegion>>(vec!["a"]);
@@ -607,89 +648,92 @@ mod tests {
         test_copy::<_, <(u8, u8) as RegionPreference>::Region>((1, 2));
         test_copy::<_, <(u8, u8) as RegionPreference>::Region>(&(1, 2));
 
-        test_copy::<_, ConsecutiveIndexPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
+        // test_copy::<_, ConsecutiveIndexPairs<OwnedRegion<_>>>([1, 2, 3].as_slice());
 
-        test_copy::<_, CollapseSequence<OwnedRegion<_>>>([1, 2, 3].as_slice());
-        test_copy::<_, CollapseSequence<OwnedRegion<_>>>(&[1, 2, 3]);
+        // test_copy::<_, CollapseSequence<OwnedRegion<_>>>([1, 2, 3].as_slice());
+        // test_copy::<_, CollapseSequence<OwnedRegion<_>>>(&[1, 2, 3]);
 
         test_copy::<_, OptionRegion<StringRegion>>(Some("abc"));
         test_copy::<_, OptionRegion<StringRegion>>(&Some("abc"));
         test_copy::<_, OptionRegion<StringRegion>>(Option::<&'static str>::None);
         test_copy::<_, OptionRegion<StringRegion>>(&Option::<&'static str>::None);
 
-        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-            Result::<&'static str, u8>::Ok("abc"),
-        );
-        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-            &Result::<&'static str, u8>::Ok("abc"),
-        );
-        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-            Result::<&'static str, u8>::Err(1),
-        );
-        test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-            Result::<&'static str, u8>::Err(2),
-        );
+        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+        //     Result::<&'static str, u8>::Ok("abc"),
+        // );
+        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+        //     &Result::<&'static str, u8>::Ok("abc"),
+        // );
+        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+        //     Result::<&'static str, u8>::Err(1),
+        // );
+        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
+        //     Result::<&'static str, u8>::Err(2),
+        // );
     }
 
     #[test]
     fn slice_region_read_item() {
         fn is_clone<T: Clone>(_: &T) {}
 
-        let mut c = FlatStack::<SliceRegion<MirrorRegion<u8>>>::default();
-        c.copy(vec![1, 2, 3]);
+        let mut c = <SliceRegion<Vec<u8>>>::default();
+        c.push(vec![1, 2, 3]);
 
-        let mut r = SliceRegion::<MirrorRegion<u8>>::default();
-        let idx = r.push([1, 2, 3]);
-        let read_item = r.index(idx);
+        let mut r = SliceRegion::<Vec<u8>>::default();
+        r.push([1, 2, 3]);
+        let read_item = r.index(0);
         is_clone(&read_item);
         let _read_item3 = read_item;
-        assert_eq!(vec![1, 2, 3], read_item.into_iter().collect::<Vec<_>>());
+        assert_eq!(
+            vec![1, 2, 3],
+            read_item.into_iter().copied().collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn nested_slice_copy() {
-        let mut c = FlatStack::default_impl::<[[[[[u8; 1]; 1]; 1]; 1]; 1]>();
+        let mut c = <[[[[[u8; 1]; 1]; 1]; 1]; 1] as RegionPreference>::Region::default();
 
-        c.copy([[[[[1]]]]]);
-        c.copy(&[[[[[1]]]]]);
-        c.copy(&[[[[[&1]]]]]);
-        c.copy([[[[[&1]]]]]);
-        c.copy([[&[[[&1]]]]]);
-        c.copy([[[[[1]]; 1]; 1]; 1]);
-        c.copy(&[[[[[1; 1]; 1]; 1]; 1]; 1]);
-        c.copy(&[[[[[&1; 1]; 1]; 1]; 1]; 1]);
-        c.copy([[[[[&1; 1]; 1]; 1]; 1]; 1]);
-        c.copy([[&[[[&1; 1]; 1]; 1]; 1]; 1]);
-        c.copy([[vec![[[1; 1]; 1]; 1]; 1]; 1]);
-        c.copy(&[[vec![[[1; 1]; 1]; 1]; 1]; 1]);
-        c.copy(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
-        c.copy([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
-        c.copy([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[[[[1]]]]]);
+        c.push(&[[[[[1]]]]]);
+        c.push(&[[[[[&1]]]]]);
+        c.push([[[[[&1]]]]]);
+        c.push([[&[[[&1]]]]]);
+        c.push([[[[[1]]; 1]; 1]; 1]);
+        c.push(&[[[[[1; 1]; 1]; 1]; 1]; 1]);
+        c.push(&[[[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[&[[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[vec![[[1; 1]; 1]; 1]; 1]; 1]);
+        c.push(&[[vec![[[1; 1]; 1]; 1]; 1]; 1]);
+        c.push(&[[vec![[[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[[vec![[&1; 1]; 1]; 1]; 1]; 1]);
+        c.push([[&vec![[[&1; 1]; 1]; 1]; 1]; 1]);
     }
 
     #[test]
     fn test_owned() {
-        fn owned_roundtrip<R, O>(region: &mut R, index: R::Index)
+        fn owned_roundtrip<R, O>(region: &mut R, index: usize)
         where
-            for<'a> R: Region + Push<<<R as Region>::ReadItem<'a> as IntoOwned<'a>>::Owned>,
+            for<'a> R: Index + Push<<<R as Index>::ReadItem<'a> as IntoOwned<'a>>::Owned> + Len,
             for<'a> R::ReadItem<'a>: IntoOwned<'a, Owned = O> + Eq + Debug,
         {
             let item = region.index(index);
             let owned = item.into_owned();
-            let index2 = region.push(owned);
+            region.push(owned);
             let item = region.index(index);
-            assert_eq!(item, region.index(index2));
+            assert_eq!(item, region.index(region.len() - 1));
         }
 
         let mut c = <StringRegion>::default();
-        let index = c.push("abc".to_string());
-        owned_roundtrip::<StringRegion, String>(&mut c, index);
+        c.push("abc".to_string());
+        owned_roundtrip::<StringRegion, String>(&mut c, 0);
     }
 
     /// Test that items and owned variants can be reborrowed to shorten their lifetimes.
     fn _test_reborrow<R>(item: R::ReadItem<'_>, owned: &R::Owned)
     where
-        R: Region,
+        R: Index,
         for<'a> R::ReadItem<'a>: Eq,
     {
         // The following line requires `reborrow` because otherwise owned must outlive '_.
@@ -704,4 +748,3 @@ mod tests {
         let _ = R::reborrow(item) == R::reborrow(IntoOwned::borrow_as(owned));
     }
 }
-*/

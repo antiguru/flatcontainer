@@ -3,11 +3,14 @@
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::rank_select::RankSelect;
+use crate::{
+    Clear, HeapSize, Index, IndexAs, IntoOwned, Len, Push, Region, RegionPreference, ReserveItems,
+};
 
 impl<T: RegionPreference> RegionPreference for Option<T> {
     type Owned = Option<T::Owned>;
-    type Region = OptionRegion<T::Region>;
+    type Region = OptionRegion<T::Region, Vec<u64>, Vec<u64>>;
 }
 
 /// A region to hold [`Option`]s.
@@ -16,25 +19,27 @@ impl<T: RegionPreference> RegionPreference for Option<T> {
 ///
 /// The region can hold options:
 /// ```
-/// # use flatcontainer::{RegionPreference, Push, OptionRegion, Region};
+/// # use flatcontainer::{RegionPreference, Push, OptionRegion, Index};
 /// let mut r = <OptionRegion<<u8 as RegionPreference>::Region>>::default();
 ///
-/// let some_index = r.push(Some(123));
+/// r.push(Some(123));
 /// // Type annotations required for `None`:
-/// let none_index = r.push(Option::<u8>::None);
+/// r.push(Option::<u8>::None);
 ///
-/// assert_eq!(Some(123), r.index(some_index));
-/// assert_eq!(None, r.index(none_index));
+/// assert_eq!(Some(&123), r.index(0));
+/// assert_eq!(None, r.index(1));
 /// ```
 #[derive(Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct OptionRegion<R> {
+pub struct OptionRegion<R, RC = Vec<u64>, RV = Vec<u64>> {
+    ranks: RankSelect<RC, RV>,
     inner: R,
 }
 
-impl<R: Clone> Clone for OptionRegion<R> {
+impl<R: Clone, RC: Clone, RV: Clone> Clone for OptionRegion<R, RC, RV> {
     fn clone(&self) -> Self {
         Self {
+            ranks: self.ranks.clone(),
             inner: self.inner.clone(),
         }
     }
@@ -44,24 +49,16 @@ impl<R: Clone> Clone for OptionRegion<R> {
     }
 }
 
-impl<R: Region> Region for OptionRegion<R> {
-    type Owned = Option<R::Owned>;
-    type ReadItem<'a> = Option<<R as Region>::ReadItem<'a>> where Self: 'a;
-    type Index = Option<R::Index>;
-
+impl<R: Region, RC: Region, RV: Region> Region for OptionRegion<R, RC, RV> {
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
     {
         Self {
+            ranks: RankSelect::merge_regions(regions.clone().map(|r| &r.ranks)),
             inner: R::merge_regions(regions.map(|r| &r.inner)),
         }
-    }
-
-    #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        index.map(|t| self.inner.index(t))
     }
 
     #[inline]
@@ -70,17 +67,58 @@ impl<R: Region> Region for OptionRegion<R> {
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone,
     {
+        self.ranks
+            .reserve_regions(regions.clone().map(|r| &r.ranks));
         self.inner.reserve_regions(regions.map(|r| &r.inner));
     }
+}
 
-    #[inline]
+impl<R, RC, RV> HeapSize for OptionRegion<R, RC, RV>
+where
+    R: HeapSize,
+    RC: HeapSize,
+    RV: HeapSize,
+{
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.ranks.heap_size(&mut callback);
+        self.inner.heap_size(callback);
+    }
+}
+
+impl<R, RC, RV> Clear for OptionRegion<R, RC, RV>
+where
+    R: Clear,
+    RC: Clear,
+    RV: Clear,
+{
     fn clear(&mut self) {
+        self.ranks.clear();
         self.inner.clear();
     }
+}
+
+impl<R, RC, RV: Len> Len for OptionRegion<R, RC, RV> {
+    fn len(&self) -> usize {
+        self.ranks.len()
+    }
+}
+
+impl<R, RC, RV> Index for OptionRegion<R, RC, RV>
+where
+    R: Index,
+    RC: IndexAs<u64> + Len,
+    RV: IndexAs<u64> + Len,
+{
+    type Owned = Option<R::Owned>;
+    type ReadItem<'a> = Option<<R as Index>::ReadItem<'a>> where Self: 'a;
 
     #[inline]
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
-        self.inner.heap_size(callback);
+    fn index(&self, index: usize) -> Self::ReadItem<'_> {
+        if self.ranks.index_as(index) {
+            Some(self.inner.index(self.ranks.rank(index)))
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -118,27 +156,47 @@ where
     }
 }
 
-impl<T, TR> Push<Option<T>> for OptionRegion<TR>
+impl<T, TR, RC, RV> Push<Option<T>> for OptionRegion<TR, RC, RV>
 where
-    TR: Region + Push<T>,
+    TR: Push<T>,
+    RC: IndexAs<u64> + Len + Push<u64>,
+    RV: IndexAs<u64> + Len + Push<u64>,
 {
     #[inline]
-    fn push(&mut self, item: Option<T>) -> <OptionRegion<TR> as Region>::Index {
-        item.map(|t| self.inner.push(t))
+    fn push(&mut self, item: Option<T>) {
+        match item {
+            Some(t) => {
+                self.ranks.push(true);
+                self.inner.push(t);
+            }
+            None => {
+                self.ranks.push(false);
+            }
+        }
     }
 }
 
-impl<'a, T: 'a, TR> Push<&'a Option<T>> for OptionRegion<TR>
+impl<'a, T: 'a, TR, RC, RV> Push<&'a Option<T>> for OptionRegion<TR, RC, RV>
 where
-    TR: Region + Push<&'a T>,
+    TR: Push<&'a T>,
+    RC: IndexAs<u64> + Len + Push<u64>,
+    RV: IndexAs<u64> + Len + Push<u64>,
 {
     #[inline]
-    fn push(&mut self, item: &'a Option<T>) -> <OptionRegion<TR> as Region>::Index {
-        item.as_ref().map(|t| self.inner.push(t))
+    fn push(&mut self, item: &'a Option<T>) {
+        match item {
+            Some(t) => {
+                self.ranks.push(true);
+                self.inner.push(t);
+            }
+            None => {
+                self.ranks.push(false);
+            }
+        }
     }
 }
 
-impl<T, TR> ReserveItems<Option<T>> for OptionRegion<TR>
+impl<T, TR, RC, RV> ReserveItems<Option<T>> for OptionRegion<TR, RC, RV>
 where
     TR: Region + ReserveItems<T>,
 {
@@ -154,7 +212,7 @@ where
     }
 }
 
-impl<'a, T: 'a, TR> ReserveItems<&'a Option<T>> for OptionRegion<TR>
+impl<'a, T: 'a, TR, RC, RV> ReserveItems<&'a Option<T>> for OptionRegion<TR, RC, RV>
 where
     TR: Region + ReserveItems<&'a T>,
 {
@@ -169,13 +227,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{MirrorRegion, OwnedRegion, Region, ReserveItems};
+    use crate::{OwnedRegion, ReserveItems};
 
     use super::*;
 
     #[test]
     fn test_reserve() {
-        let mut r = <OptionRegion<MirrorRegion<u8>>>::default();
+        let mut r = <OptionRegion<Vec<u8>>>::default();
         ReserveItems::reserve_items(&mut r, [Some(0), None].iter());
 
         ReserveItems::reserve_items(&mut r, [Some(0), None].into_iter());
@@ -184,11 +242,24 @@ mod tests {
     #[test]
     fn test_heap_size() {
         let mut r = <OptionRegion<OwnedRegion<u8>>>::default();
-        ReserveItems::reserve_items(&mut r, [Some([1; 1]), None].iter());
+        ReserveItems::reserve_items(
+            &mut r,
+            std::iter::once(Some(&[1; 1])).chain(std::iter::repeat_n(None, 1000)),
+        );
         let mut cap = 0;
         r.heap_size(|_, ca| {
             cap += ca;
         });
         assert!(cap > 0);
+        for item in std::iter::once(Some(&[1; 1])).chain(std::iter::repeat_n(None, 10000)) {
+            r.push(item);
+        }
+        let mut siz = 0;
+        r.heap_size(|s, _| {
+            siz += s;
+        });
+        assert!(siz > 0);
+        println!("{siz}");
+        println!("{r:?}")
     }
 }

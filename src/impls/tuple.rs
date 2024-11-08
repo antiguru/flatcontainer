@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems, Clear, Len, HeapSize, Index};
+use crate::{Clear, HeapSize, Index, IntoOwned, Len, Push, Region, RegionPreference, ReserveItems};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -86,14 +86,17 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
+            #[allow(unused_variables)]
             impl<$($name: Len),*> Len for [<Tuple $($name)* Region>]<$($name),*> {
                 #[inline(always)]
                 fn len(&self) -> usize {
-                    self.0.len()
+                    $(let len = self.[<container $name>].len();)*
+                    len
                 }
                 #[inline(always)]
                 fn is_empty(&self) -> bool {
-                    self.0.is_empty()
+                    $(let is_empty = self.[<container $name>].is_empty();)*
+                    is_empty
                 }
             }
 
@@ -249,44 +252,45 @@ cfg_if::cfg_if! {
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::tuple::TupleABCRegion;
-    use crate::{Push, Region, StringRegion};
+    use crate::{Push, StringRegion};
+
+    use super::*;
 
     #[test]
     fn test_tuple() {
         let t = (1, 2, 3);
         let mut r = <TupleABCRegion<Vec<_>, Vec<_>, Vec<_>>>::default();
-        let index = r.push(t);
-        assert_eq!(t, r.index(index));
+        r.push(t);
+        assert_eq!((&1, &2, &3), r.index(0));
 
-        let index = r.push((&1, &2, &3));
-        assert_eq!(t, r.index(index));
+        r.push((&1, &2, &4));
+        assert_eq!((&1, &2, &4), r.index(1));
 
-        let index = r.push((&1, 2, 3));
-        assert_eq!(t, r.index(index));
+        r.push((&1, 2, 5));
+        assert_eq!((&1, &2, &5), r.index(2));
 
-        let index = r.push(&(1, 2, 3));
-        assert_eq!(t, r.index(index));
+        r.push(&(1, 2, 6));
+        assert_eq!((&1, &2, &6), r.index(3));
 
-        let index = r.push(&(1, &2, 3));
-        assert_eq!(t, r.index(index));
+        r.push(&(1, &2, 7));
+        assert_eq!((&1, &2, &7), r.index(4));
     }
 
     #[test]
     fn test_nested() {
         let t = ("abc", 2, 3);
         let mut r = <TupleABCRegion<StringRegion, Vec<_>, Vec<_>>>::default();
-        let index = r.push(t);
-        assert_eq!(t, r.index(index));
+        r.push(t);
+        assert_eq!(("abc", &2, &3), r.index(0));
 
-        let index = r.push((&"abc", &2, &3));
-        assert_eq!(t, r.index(index));
+        r.push((&"abc", &2, &3));
+        assert_eq!(("abc", &2, &3), r.index(1));
 
-        let index = r.push((&"abc", 2, 3));
-        assert_eq!(t, r.index(index));
+        r.push((&"abc", 2, 3));
+        assert_eq!(("abc", &2, &3), r.index(2));
 
-        let index = r.push(&("abc", 2, 3));
-        assert_eq!(t, r.index(index));
+        r.push(&("abc", 2, 3));
+        assert_eq!(("abc", &2, &3), r.index(3));
     }
 
     #[test]
@@ -311,10 +315,10 @@ mod tests {
     }
     #[test]
     fn test_reserve_items() {
-        let mut c = FlatStack::default_impl::<(usize, String, Vec<String>)>();
-        c.copy((1, format!("Hello"), &["abc"]));
+        let mut c = <(usize, String, Vec<String>) as RegionPreference>::Region::default();
+        c.push((1, format!("Hello"), &["abc"]));
 
-        let mut c2 = FlatStack::default_impl::<(usize, String, Vec<String>)>();
+        let mut c2 = <(usize, String, Vec<String>) as RegionPreference>::Region::default();
         c2.reserve_items(c.iter());
     }
 }
