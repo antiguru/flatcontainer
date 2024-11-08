@@ -1,5 +1,5 @@
 //! A simple benchmark for flatcontainer, adopted from `columnation`'s benchmark.
-
+/*
 use codspeed_bencher_compat::{benchmark_group, benchmark_main, Bencher};
 use flatcontainer::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
 use flatcontainer::impls::index::IndexOptimized;
@@ -524,3 +524,4 @@ benchmark_group!(
     vec_u_vn_s_realloc,
 );
 benchmark_main!(clone, copy, copy_flat, copy_region, alloc);
+*/

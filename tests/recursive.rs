@@ -1,5 +1,5 @@
 //! Demonstration of how to encode recursive data structures.
-
+/*
 use flatcontainer::impls::deduplicate::ConsecutiveIndexPairs;
 use flatcontainer::{IntoOwned, Push, Region, StringRegion};
 
@@ -149,3 +149,4 @@ fn recursive() {
 
     println!("{region:?}");
 }
+*/

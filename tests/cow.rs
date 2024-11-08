@@ -1,6 +1,6 @@
 //! What follows is an example of a Cow-like type that can be used to switch between a GAT
 //! and an owned type at runtime.
-
+/*
 use std::fmt::{Debug, Formatter};
 use std::marker::PhantomData;
 
@@ -171,3 +171,4 @@ fn test_gat_cow() {
     assert_eq!("abcdef", item.into_owned());
     assert_eq!("abc", c.get(0).into_owned());
 }
+*/

@@ -2,37 +2,17 @@
 #![deny(missing_docs)]
 
 use std::borrow::Borrow;
-use std::fmt::{Debug, Formatter};
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 pub mod impls;
 
-use crate::impls::index::IndexContainer;
-pub use impls::columns::ColumnsRegion;
-pub use impls::mirror::MirrorRegion;
-pub use impls::option::OptionRegion;
-pub use impls::result::ResultRegion;
+// use crate::impls::index::IndexContainer;
+// pub use impls::columns::ColumnsRegion;
+// pub use impls::mirror::MirrorRegion;
+// pub use impls::option::OptionRegion;
+// pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_owned::OwnedRegion;
 pub use impls::string::StringRegion;
-
-/// An index into a region. Automatically implemented for relevant types.
-///
-/// We require an index to be [`Copy`] and to support serde.
-#[cfg(feature = "serde")]
-pub trait Index: Copy + Serialize + for<'a> Deserialize<'a> {}
-#[cfg(feature = "serde")]
-impl<T: Copy + Serialize + for<'a> Deserialize<'a>> Index for T {}
-
-/// An index into a region. Automatically implemented for relevant types.
-///
-/// We require an index to be [`Copy`].
-#[cfg(not(feature = "serde"))]
-pub trait Index: Copy {}
-#[cfg(not(feature = "serde"))]
-impl<T: Copy> Index for T {}
 
 /// A region to absorb presented data and present it as a type with a lifetime.
 ///
@@ -41,46 +21,17 @@ impl<T: Copy> Index for T {}
 /// presentation of the data, and what data it can absorb.
 ///
 /// Implement the [`Push`] trait for all types that can be copied into a region.
-pub trait Region: Default {
-    /// An owned type that can be constructed from a read item.
-    type Owned;
-
-    /// The type of the data that one gets out of the container.
-    type ReadItem<'a>: IntoOwned<'a, Owned = Self::Owned>
-    where
-        Self: 'a;
-
-    /// The type to index into the container. Should be treated
-    /// as an opaque type, even if known.
-    type Index: Index;
-
+pub trait Region {
     /// Construct a region that can absorb the contents of `regions` in the future.
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a;
-
-    /// Index into the container. The index must be obtained by
-    /// pushing data into the container.
-    #[must_use]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_>;
 
     /// Ensure that the region can absorb the items of `regions` without reallocation
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
         I: Iterator<Item = &'a Self> + Clone;
-
-    /// Remove all elements from this region, but retain allocations if possible.
-    fn clear(&mut self);
-
-    /// Heap size, size - capacity
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
-
-    /// Converts a read item into one with a narrower lifetime.
-    #[must_use]
-    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
-    where
-        Self: 'a;
 }
 
 /// A trait to let types express a default container type and an owned type, which can
@@ -89,14 +40,14 @@ pub trait Region: Default {
 /// # Example
 ///
 /// ```
-/// # use flatcontainer::{FlatStack, RegionPreference};
-/// let _ = FlatStack::<<((Vec<String>, &[usize]), Option<String>, Result<u8, u16>) as RegionPreference>::Region>::default();
+/// # use flatcontainer::{RegionPreference};
+/// let _ = <<((Vec<String>, &[usize]), Option<String>, Result<u8, u16>) as RegionPreference>::Region>::default();
 /// ```
 pub trait RegionPreference {
     /// The owned type of the region.
     type Owned;
     /// The recommended container type.
-    type Region: Region<Owned = Self::Owned>;
+    type Region: Index<Owned = Self::Owned>;
 }
 
 impl<T: RegionPreference + ?Sized> RegionPreference for &T {
@@ -104,18 +55,16 @@ impl<T: RegionPreference + ?Sized> RegionPreference for &T {
     type Region = T::Region;
 }
 
-/// Push an item `T` into a region.
-pub trait Push<T>: Region {
-    /// Push `item` into self, returning an index that allows to look up the
-    /// corresponding read item.
-    #[must_use]
-    fn push(&mut self, item: T) -> Self::Index;
+/// Push an item `T` into a container.
+pub trait Push<T> {
+    /// Push `item` into self.
+    fn push(&mut self, item: T);
 }
 
 /// Reserve space in the receiving region.
 ///
 /// Closely related to [`Push`], but separate because target type is likely different.
-pub trait ReserveItems<T>: Region {
+pub trait ReserveItems<T> {
     /// Ensure that the region can absorb `items` without reallocation.
     fn reserve_items<I>(&mut self, items: I)
     where
@@ -156,7 +105,7 @@ impl<'a, T: ToOwned + ?Sized> IntoOwned<'a> for &'a T {
         owned.borrow()
     }
 }
-
+/*
 /// A container for indices into a region.
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[cfg_attr(
@@ -413,6 +362,7 @@ impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
         self.indices.clone_from(&source.indices);
     }
 }
+*/
 
 /// A type to wrap and push iterators into regions.
 ///
@@ -422,10 +372,85 @@ impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
 pub struct PushIter<I>(pub I);
 
+impl<I: IntoIterator> IntoIterator for PushIter<I> {
+    type Item = I::Item;
+    type IntoIter = I::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+/// TODO
+pub trait IndexAs<T> {
+    /// TODO
+    fn index_as(&self, index: usize) -> T;
+}
+
+/// TODO
+pub trait Len {
+    /// TODO
+    fn len(&self) -> usize;
+    /// TODO
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// TODO
+pub trait Reserve {
+    /// TODO
+    fn reserve(&mut self, additional: usize);
+}
+
+/// TODO
+pub trait WithCapacity {
+    /// TODO
+    fn with_capacity(capacity: usize) -> Self;
+}
+
+/// TODO
+pub trait Clear {
+    /// TODO
+    fn clear(&mut self);
+}
+
+/// TODO
+pub trait HeapSize {
+    /// TODO
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F);
+}
+
+/// TODO
+pub trait Index {
+    /// An owned type that can be constructed from a read item.
+    type Owned;
+    /// The type of the data that one gets out of the container.
+    type ReadItem<'a>: IntoOwned<'a, Owned = Self::Owned>
+    where
+        Self: 'a;
+    /// TODO
+    fn index(&self, index: usize) -> Self::ReadItem<'_>;
+
+    /// Converts a read item into one with a narrower lifetime.
+    #[must_use]
+    fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    where
+        Self: 'a;
+    // #[inline]
+    // fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
+    // where
+    //     Self: 'a,
+    // {
+    //     item
+    // }
+}
+
+/*
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
-    use crate::impls::tuple::TupleARegion;
+    // use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
+    // use crate::impls::tuple::TupleARegion;
 
     use super::*;
 
@@ -679,3 +704,4 @@ mod tests {
         let _ = R::reborrow(item) == R::reborrow(IntoOwned::borrow_as(owned));
     }
 }
+*/

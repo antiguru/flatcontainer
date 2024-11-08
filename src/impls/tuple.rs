@@ -4,7 +4,7 @@ use paste::paste;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems};
+use crate::{IntoOwned, Push, Region, RegionPreference, ReserveItems, Clear, Len, HeapSize, Index};
 
 /// The macro creates the region implementation for tuples
 macro_rules! tuple_flatcontainer {
@@ -24,10 +24,7 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
-            impl<$($name: Region + Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*>
-            where
-               $(<$name as Region>::Index: crate::Index),*
-            {
+            impl<$($name: Clone),*> Clone for [<Tuple $($name)* Region>]<$($name),*> {
                 fn clone(&self) -> Self {
                     Self {
                         $([<container $name>]: self.[<container $name>].clone(),)*
@@ -40,15 +37,7 @@ macro_rules! tuple_flatcontainer {
             }
 
             #[allow(non_snake_case)]
-            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*>
-            where
-               $(<$name as Region>::Index: crate::Index),*
-            {
-                type Owned = ($($name::Owned,)*);
-                type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
-
-                type Index = ($($name::Index,)*);
-
+            impl<$($name: Region),*> Region for [<Tuple $($name)* Region>]<$($name),*> {
                 #[inline]
                 fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
                 where
@@ -58,14 +47,6 @@ macro_rules! tuple_flatcontainer {
                         $([<container $name>]: $name::merge_regions(regions.clone().map(|r| &r.[<container $name>]))),*
                     }
                 }
-
-                #[inline] fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-                    let ($($name,)*) = index;
-                    (
-                        $(self.[<container $name>].index($name),)*
-                    )
-                }
-
                 #[inline(always)]
                 fn reserve_regions<'a, It>(&mut self, regions: It)
                 where
@@ -74,15 +55,17 @@ macro_rules! tuple_flatcontainer {
                 {
                     $(self.[<container $name>].reserve_regions(regions.clone().map(|r| &r.[<container $name>]));)*
                 }
+            }
 
-                #[inline(always)]
-                fn clear(&mut self) {
-                    $(self.[<container $name>].clear();)*
-                }
+            #[allow(non_snake_case)]
+            impl<$($name: Index),*> Index for [<Tuple $($name)* Region>]<$($name),*> {
+                type Owned = ($($name::Owned,)*);
+                type ReadItem<'a> = ($($name::ReadItem<'a>,)*) where Self: 'a;
 
-                #[inline]
-                fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
-                    $(self.[<container $name>].heap_size(&mut callback);)*
+                #[inline] fn index(&self, index: usize) -> Self::ReadItem<'_> {
+                    (
+                        $(self.[<container $name>].index(index),)*
+                    )
                 }
 
                 #[inline]
@@ -94,6 +77,34 @@ macro_rules! tuple_flatcontainer {
                 }
             }
 
+            #[allow(non_snake_case)]
+            impl<$($name: Clear),*> Clear for [<Tuple $($name)* Region>]<$($name),*> {
+                #[inline(always)]
+                fn clear(&mut self) {
+                    $(self.[<container $name>].clear();)*
+                }
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: Len),*> Len for [<Tuple $($name)* Region>]<$($name),*> {
+                #[inline(always)]
+                fn len(&self) -> usize {
+                    self.0.len()
+                }
+                #[inline(always)]
+                fn is_empty(&self) -> bool {
+                    self.0.is_empty()
+                }
+            }
+
+            #[allow(non_snake_case)]
+            impl<$($name: HeapSize),*> HeapSize for [<Tuple $($name)* Region>]<$($name),*> {
+                #[inline]
+                fn heap_size<Fn: FnMut(usize, usize)>(&self, mut callback: Fn) {
+                    $(self.[<container $name>].heap_size(&mut callback);)*
+                }
+            }
+
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
             impl<$($name, [<$name _C>]: Region ),*> Push<($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
@@ -101,10 +112,9 @@ macro_rules! tuple_flatcontainer {
                 $([<$name _C>]: Push<$name>),*
             {
                 #[inline]
-                fn push(&mut self, item: ($($name,)*))
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                fn push(&mut self, item: ($($name,)*)) {
                     let ($($name,)*) = item;
-                    ($(self.[<container $name>].push($name),)*)
+                    $(self.[<container $name>].push($name);)*
                 }
             }
 
@@ -112,13 +122,12 @@ macro_rules! tuple_flatcontainer {
             #[allow(non_snake_case)]
             impl<'a, $($name, [<$name _C>]),*> Push<&'a ($($name,)*)> for [<Tuple $($name)* Region>]<$([<$name _C>]),*>
             where
-                $([<$name _C>]: Region + Push<&'a $name>),*
+                $([<$name _C>]: Push<&'a $name>),*
             {
                 #[inline]
-                fn push(&mut self, item: &'a ($($name,)*))
-                    -> <[<Tuple $($name)* Region>]<$([<$name _C>]),*> as Region>::Index {
+                fn push(&mut self, item: &'a ($($name,)*)) {
                     let ($($name,)*) = item;
-                    ($(self.[<container $name>].push($name),)*)
+                    $(self.[<container $name>].push($name);)*
                 }
             }
 
@@ -241,12 +250,12 @@ cfg_if::cfg_if! {
 #[cfg(test)]
 mod tests {
     use crate::impls::tuple::TupleABCRegion;
-    use crate::{FlatStack, MirrorRegion, Push, Region, StringRegion};
+    use crate::{Push, Region, StringRegion};
 
     #[test]
     fn test_tuple() {
         let t = (1, 2, 3);
-        let mut r = <TupleABCRegion<MirrorRegion<_>, MirrorRegion<_>, MirrorRegion<_>>>::default();
+        let mut r = <TupleABCRegion<Vec<_>, Vec<_>, Vec<_>>>::default();
         let index = r.push(t);
         assert_eq!(t, r.index(index));
 
@@ -266,7 +275,7 @@ mod tests {
     #[test]
     fn test_nested() {
         let t = ("abc", 2, 3);
-        let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
+        let mut r = <TupleABCRegion<StringRegion, Vec<_>, Vec<_>>>::default();
         let index = r.push(t);
         assert_eq!(t, r.index(index));
 
@@ -283,7 +292,7 @@ mod tests {
     #[test]
     fn test_heap_size() {
         let t = ("abc", 2, 3);
-        let mut r = <TupleABCRegion<StringRegion, MirrorRegion<_>, MirrorRegion<_>>>::default();
+        let mut r = <TupleABCRegion<StringRegion, Vec<_>, Vec<_>>>::default();
 
         let _ = r.push(t);
 

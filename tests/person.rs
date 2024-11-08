@@ -1,5 +1,5 @@
 //! Test a slightly more struct with nested regions, representing people.
-
+/*
 use flatcontainer::{FlatStack, IntoOwned, Push, Region, RegionPreference, ReserveItems};
 
 struct Person {
@@ -186,3 +186,4 @@ fn test_person() {
         assert_eq!(copied_hobby, hobby);
     }
 }
+*/

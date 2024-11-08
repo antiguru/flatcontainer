@@ -5,18 +5,18 @@ A flat container for Rust.
 
 ```toml
 [dependencies]
-flatcontainer = "0.4"
+flatcontainer = "0.6"
 ```
 
 ## Example
 
 ```rust
-use flatcontainer::FlatStack;
+use flatcontainer::{Index, RegionPreference};
 
 let r: Result<_, u16> = Ok("abc");
-let mut c = FlatStack::default_impl::<Result<&str, u16>>();
-c.copy(&r);
-assert_eq!(r, c.get(0));
+let mut c = <<Result<&str, u16> as RegionPreference>::Region>::default();
+c.push(&r);
+assert_eq!(r, c.index(0));
 ```
 
 ## Details
