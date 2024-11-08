@@ -11,12 +11,12 @@ flatcontainer = "0.6"
 ## Example
 
 ```rust
-use flatcontainer::{Index, RegionPreference};
+use flatcontainer::{Index, Push, RegionPreference};
 
 let r: Result<_, u16> = Ok("abc");
 let mut c = <<Result<&str, u16> as RegionPreference>::Region>::default();
 c.push(&r);
-assert_eq!(r, c.index(0));
+assert_eq!(Ok("abc"), c.index(0));
 ```
 
 ## Details

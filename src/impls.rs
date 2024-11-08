@@ -7,7 +7,7 @@
 // pub mod index;
 // pub mod mirror;
 pub mod option;
-// pub mod result;
+pub mod result;
 pub mod slice;
 pub mod slice_owned;
 pub mod string;

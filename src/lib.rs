@@ -13,7 +13,7 @@ mod rank_select;
 // pub use impls::columns::ColumnsRegion;
 // pub use impls::mirror::MirrorRegion;
 pub use impls::option::OptionRegion;
-// pub use impls::result::ResultRegion;
+pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
 pub use impls::slice_owned::OwnedRegion;
 pub use impls::string::StringRegion;
@@ -492,13 +492,13 @@ mod tests {
 
     use super::*;
 
-    // #[test]
-    // fn test_readme() {
-    //     let r: Result<_, u16> = Ok("abc");
-    //     let mut c = FlatStack::default_impl::<Result<&str, u16>>();
-    //     c.copy(r);
-    //     assert_eq!(r, c.get(0));
-    // }
+    #[test]
+    fn test_readme() {
+        let r: Result<_, u16> = Ok("abc");
+        let mut c = <Result<&str, u16> as RegionPreference>::Region::default();
+        c.push(r);
+        assert_eq!(Ok("abc"), c.index(0));
+    }
 
     #[test]
     fn test_slice_string_onto() {
@@ -534,13 +534,13 @@ mod tests {
         assert!(slice.iter().eq(c.index(0)));
     }
 
-    // #[test]
-    // fn test_result() {
-    //     let r: Result<_, u16> = Ok("abc");
-    //     let mut c = <ResultRegion<StringRegion, MirrorRegion<_>>>::default();
-    //     let idx = copy(&mut c, r);
-    //     assert_eq!(r, c.index(idx));
-    // }
+    #[test]
+    fn test_result() {
+        let r: Result<_, u16> = Ok("abc");
+        let mut c = <ResultRegion<StringRegion, Vec<_>>>::default();
+        c.push(r);
+        assert_eq!(Ok("abc"), c.index(0));
+    }
 
     #[test]
     fn all_types() {
@@ -553,7 +553,8 @@ mod tests {
                 + Index
                 + Clone
                 + Clear
-        + HeapSize + Len,
+                + HeapSize
+                + Len,
             // Make sure that types are debug, even if we don't use this in the test.
             for<'a> R::ReadItem<'a>: Debug,
         {
@@ -658,18 +659,10 @@ mod tests {
         test_copy::<_, OptionRegion<StringRegion>>(Option::<&'static str>::None);
         test_copy::<_, OptionRegion<StringRegion>>(&Option::<&'static str>::None);
 
-        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-        //     Result::<&'static str, u8>::Ok("abc"),
-        // );
-        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-        //     &Result::<&'static str, u8>::Ok("abc"),
-        // );
-        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-        //     Result::<&'static str, u8>::Err(1),
-        // );
-        // test_copy::<_, ResultRegion<StringRegion, MirrorRegion<u8>>>(
-        //     Result::<&'static str, u8>::Err(2),
-        // );
+        test_copy::<_, ResultRegion<StringRegion, Vec<u8>>>(Result::<&'static str, u8>::Ok("abc"));
+        test_copy::<_, ResultRegion<StringRegion, Vec<u8>>>(&Result::<&'static str, u8>::Ok("abc"));
+        test_copy::<_, ResultRegion<StringRegion, Vec<u8>>>(Result::<&'static str, u8>::Err(1));
+        test_copy::<_, ResultRegion<StringRegion, Vec<u8>>>(Result::<&'static str, u8>::Err(2));
     }
 
     #[test]

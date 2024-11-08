@@ -50,13 +50,13 @@ type Idx = u64;
 ///     .split(" ")
 ///     .collect::<Vec<_>>();
 ///
-/// r.push(&panagram_en);
 /// r.push(&panagram_de);
+/// r.push(&panagram_en);
 ///
 /// assert!(panagram_de.into_iter().eq(r.index(0)));
 /// assert!(panagram_en.into_iter().eq(r.index(1)));
 ///
-/// assert_eq!(r.index(1).get(2), "jagen");
+/// assert_eq!(r.index(0).get(2), "jagen");
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
