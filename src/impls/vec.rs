@@ -1,12 +1,9 @@
 //! Definitions to use `Vec<T>` as a region.
 
-use crate::{Push, Region, ReserveItems};
+use crate::{Clear, HeapSize, Index, IndexAs, Len, Push, PushSlice, Region, Reserve, ReserveItems};
 
-impl<T: Clone> Region for Vec<T> {
-    type Owned = T;
-    type ReadItem<'a> = &'a T where Self: 'a;
-    type Index = usize;
-
+impl<T> Region for Vec<T> {
+    #[inline(always)]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -14,10 +11,7 @@ impl<T: Clone> Region for Vec<T> {
         Self::with_capacity(regions.map(Vec::len).sum())
     }
 
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        &self[index]
-    }
-
+    #[inline(always)]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -25,16 +19,16 @@ impl<T: Clone> Region for Vec<T> {
     {
         self.reserve(regions.map(Vec::len).sum());
     }
+}
 
-    fn clear(&mut self) {
-        self.clear();
+impl<T: Clone> Index for Vec<T> {
+    type Owned = T;
+    type ReadItem<'a> = &'a T where Self: 'a;
+    #[inline(always)]
+    fn index(&self, index: usize) -> Self::ReadItem<'_> {
+        &self[index]
     }
-
-    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        let size_of_t = std::mem::size_of::<T>();
-        callback(self.len() * size_of_t, self.capacity() * size_of_t);
-    }
-
+    #[inline(always)]
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
     where
         Self: 'a,
@@ -43,28 +37,85 @@ impl<T: Clone> Region for Vec<T> {
     }
 }
 
+impl<T: Copy> IndexAs<T> for Vec<T> {
+    #[inline(always)]
+    fn index_as(&self, index: usize) -> T {
+        self[index]
+    }
+}
+
 impl<T: Clone> Push<T> for Vec<T> {
-    fn push(&mut self, item: T) -> Self::Index {
+    #[inline(always)]
+    fn push(&mut self, item: T) {
         self.push(item);
-        self.len() - 1
+    }
+
+    #[inline(always)]
+    fn push_extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+        Extend::extend(self, iter);
     }
 }
 
-impl<T: Clone> Push<&T> for Vec<T> {
-    fn push(&mut self, item: &T) -> Self::Index {
+impl<T: Clone> PushSlice<T> for Vec<T> {
+    #[inline(always)]
+    fn push_slice(&mut self, slice: &[T]) {
+        self.extend_from_slice(slice);
+    }
+
+    fn push_iter(&mut self, iter: impl IntoIterator<Item = T>) {
+        self.extend(iter);
+    }
+}
+
+impl<'a, T: Clone> Push<&'a T> for Vec<T> {
+    #[inline(always)]
+    fn push(&mut self, item: &'a T) {
         self.push(item.clone());
-        self.len() - 1
     }
 }
 
-impl<T: Clone> Push<&&T> for Vec<T> {
-    fn push(&mut self, item: &&T) -> Self::Index {
+impl<'a, 'b, T: Clone> Push<&'a &'b T> for Vec<T> {
+    #[inline(always)]
+    fn push(&mut self, item: &'a &'b T) {
         self.push((*item).clone());
-        self.len() - 1
+    }
+}
+
+impl<T> Clear for Vec<T> {
+    #[inline(always)]
+    fn clear(&mut self) {
+        self.clear();
+    }
+}
+
+impl<T> Len for Vec<T> {
+    #[inline(always)]
+    fn len(&self) -> usize {
+        self.len()
+    }
+    #[inline(always)]
+    fn is_empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl<T> HeapSize for Vec<T> {
+    #[inline(always)]
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        let size_of_t = std::mem::size_of::<T>();
+        callback(self.len() * size_of_t, self.capacity() * size_of_t);
+    }
+}
+
+impl<T> Reserve for Vec<T> {
+    #[inline(always)]
+    fn reserve(&mut self, additional: usize) {
+        self.reserve(additional);
     }
 }
 
 impl<T: Clone, D> ReserveItems<D> for Vec<T> {
+    #[inline(always)]
     fn reserve_items<I>(&mut self, items: I)
     where
         I: Iterator<Item = D> + Clone,
@@ -75,13 +126,15 @@ impl<T: Clone, D> ReserveItems<D> for Vec<T> {
 
 #[cfg(test)]
 mod tests {
+    use crate::Index;
+
     #[test]
     fn vec() {
-        use crate::{Push, Region, ReserveItems};
+        use crate::{Push, ReserveItems};
 
         let mut region = Vec::<u32>::new();
-        let index = <_ as Push<_>>::push(&mut region, 42);
-        assert_eq!(region.index(index), &42);
+        <_ as Push<_>>::push(&mut region, 42);
+        assert_eq!(region.index(0), &42);
 
         let mut region = Vec::<u32>::new();
         region.push(42);

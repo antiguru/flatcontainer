@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::impls::slice_owned::OwnedRegion;
-use crate::{Push, Region, RegionPreference, ReserveItems};
+use crate::{Clear, HeapSize, Index, Len, Push, Region, RegionPreference, ReserveItems};
 
 /// A region to store strings and read `&str`.
 ///
@@ -18,7 +18,7 @@ use crate::{Push, Region, RegionPreference, ReserveItems};
 ///
 /// We fill some data into a string region and use extract it later.
 /// ```
-/// use flatcontainer::{RegionPreference, Push, OwnedRegion, Region, StringRegion};
+/// use flatcontainer::{RegionPreference, Push, OwnedRegion, Region, StringRegion, Index};
 /// let mut r = <StringRegion>::default();
 ///
 /// let panagram_en = "The quick fox jumps over the lazy dog";
@@ -27,8 +27,8 @@ use crate::{Push, Region, RegionPreference, ReserveItems};
 /// let en_index = r.push(panagram_en);
 /// let de_index = r.push(panagram_de);
 ///
-/// assert_eq!(panagram_de, r.index(de_index));
-/// assert_eq!(panagram_en, r.index(en_index));
+/// assert_eq!(panagram_en, r.index(0));
+/// assert_eq!(panagram_de, r.index(1));
 /// ```
 #[derive(Default, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
@@ -50,12 +50,8 @@ impl<R: Clone> Clone for StringRegion<R> {
 
 impl<R> Region for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + 'a,
+    R: Region,
 {
-    type Owned = String;
-    type ReadItem<'a> = &'a str where Self: 'a ;
-    type Index = R::Index;
-
     #[inline]
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
@@ -67,12 +63,6 @@ where
     }
 
     #[inline]
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        // SAFETY: All Push implementations only accept correct utf8 data
-        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
-    }
-
-    #[inline]
     fn reserve_regions<'a, I>(&mut self, regions: I)
     where
         Self: 'a,
@@ -80,15 +70,19 @@ where
     {
         self.inner.reserve_regions(regions.map(|r| &r.inner));
     }
+}
+
+impl<R> Index for StringRegion<R>
+where
+    for<'a> R: Index<ReadItem<'a> = &'a [u8]> + 'a,
+{
+    type Owned = String;
+    type ReadItem<'a> = &'a str where Self: 'a ;
 
     #[inline]
-    fn clear(&mut self) {
-        self.inner.clear();
-    }
-
-    #[inline]
-    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
-        self.inner.heap_size(callback);
+    fn index(&self, index: usize) -> Self::ReadItem<'_> {
+        // SAFETY: All Push implementations only accept correct utf8 data
+        unsafe { std::str::from_utf8_unchecked(self.inner.index(index)) }
     }
 
     #[inline]
@@ -97,6 +91,26 @@ where
         Self: 'a,
     {
         item
+    }
+}
+
+impl<R: Len> Len for StringRegion<R> {
+    #[inline]
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<R: HeapSize> HeapSize for StringRegion<R> {
+    fn heap_size<F: FnMut(usize, usize)>(&self, callback: F) {
+        self.inner.heap_size(callback);
+    }
+}
+
+impl<R: Clear> Clear for StringRegion<R> {
+    #[inline]
+    fn clear(&mut self) {
+        self.inner.clear();
     }
 }
 
@@ -112,27 +126,27 @@ impl RegionPreference for &str {
 
 impl<R> Push<String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+    Self: for<'a> Push<&'a str>,
 {
     #[inline]
-    fn push(&mut self, item: String) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: String) {
         self.push(item.as_str())
     }
 }
 
 impl<R> Push<&String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+    Self: for<'a> Push<&'a str>,
 {
     #[inline]
-    fn push(&mut self, item: &String) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &String) {
         self.push(item.as_str())
     }
 }
 
 impl<'b, R> ReserveItems<&'b String> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
+    for<'a> R: ReserveItems<&'a [u8]> + 'a,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -145,27 +159,27 @@ where
 
 impl<R> Push<&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+    for<'a> R: Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: &str) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &str) {
         self.inner.push(item.as_bytes())
     }
 }
 
 impl<R> Push<&&str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+    for<'a> R: Push<&'a [u8]> + 'a,
 {
     #[inline]
-    fn push(&mut self, item: &&str) -> <StringRegion<R> as Region>::Index {
+    fn push(&mut self, item: &&str) {
         self.push(*item)
     }
 }
 
 impl<'b, R> ReserveItems<&'b str> for StringRegion<R>
 where
-    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + ReserveItems<&'a [u8]> + 'a,
+    for<'a> R: ReserveItems<&'a [u8]> + 'a,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -178,7 +192,7 @@ where
 
 impl<'a, 'b: 'a, R> ReserveItems<&'a &'b str> for StringRegion<R>
 where
-    for<'c> R: Region<ReadItem<'c> = &'c [u8]> + ReserveItems<&'c [u8]> + 'c,
+    for<'c> R: ReserveItems<&'c [u8]> + 'c,
 {
     #[inline]
     fn reserve_items<I>(&mut self, items: I)
@@ -191,13 +205,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{IntoOwned, Push, Region, ReserveItems, StringRegion};
+    use crate::{HeapSize, Index, IntoOwned, Push, ReserveItems, StringRegion};
 
     #[test]
     fn test_inner() {
         let mut r = <StringRegion>::default();
-        let index = r.push("abc");
-        assert_eq!(r.index(index), "abc");
+        r.push("abc");
+        assert_eq!(r.index(0), "abc");
     }
 
     #[test]
@@ -249,10 +263,10 @@ mod tests {
     fn owned() {
         let mut r = <StringRegion>::default();
 
-        let idx = r.push("abc");
-        let reference = r.index(idx);
+        r.push("abc");
+        let reference = r.index(0);
         let owned = reference.into_owned();
-        let idx = r.push(owned);
-        assert_eq!("abc", r.index(idx));
+        r.push(owned);
+        assert_eq!("abc", r.index(1));
     }
 }

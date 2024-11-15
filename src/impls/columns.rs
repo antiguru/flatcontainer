@@ -7,10 +7,8 @@ use std::slice::Iter;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 
-use crate::impls::deduplicate::ConsecutiveIndexPairs;
-use crate::impls::index::{IndexContainer, IndexOptimized};
-use crate::{IntoOwned, PushIter};
-use crate::{OwnedRegion, Push, Region};
+use crate::{Clear, HeapSize, Index, IntoOwned, Len, PushIter, PushSlice};
+use crate::{Push, Region};
 
 /// A region that can store a variable number of elements per row.
 ///
@@ -25,8 +23,7 @@ use crate::{OwnedRegion, Push, Region};
 ///
 /// Copy a table-like structure:
 /// ```
-/// # use flatcontainer::impls::deduplicate::ConsecutiveIndexPairs;
-/// # use flatcontainer::{ColumnsRegion, Push, Region, StringRegion};
+/// # use flatcontainer::{ColumnsRegion, Index, OwnedRegion, Push, Region, StringRegion};
 /// let data = [
 ///     vec![],
 ///     vec!["1"],
@@ -37,45 +34,27 @@ use crate::{OwnedRegion, Push, Region};
 ///     vec![],
 /// ];
 ///
-/// let mut r = <ColumnsRegion<ConsecutiveIndexPairs<StringRegion>>>::default();
-///
-/// let mut indices = Vec::with_capacity(data.len());
+/// let mut r = <ColumnsRegion<StringRegion, OwnedRegion<usize>>>::default();
 ///
 /// for row in &data {
-///     let index = r.push(row);
-///     indices.push(index);
+///     r.push(row);
 /// }
 ///
-/// for (&index, row) in indices.iter().zip(&data) {
+/// for (index, row) in data.iter().enumerate() {
 ///     assert!(row.iter().copied().eq(r.index(index).iter()));
 /// }
 /// ```
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-#[cfg_attr(
-    feature = "serde",
-    serde(bound = "
-            R: Serialize + for<'a> Deserialize<'a>,
-            R::Index: Serialize + for<'a> Deserialize<'a>,
-            O: Serialize + for<'a> Deserialize<'a>,
-            ")
-)]
-pub struct ColumnsRegion<R, O = IndexOptimized>
-where
-    R: Region,
-{
+pub struct ColumnsRegion<R, O> {
     /// Indices to address rows in `inner`. For each row, we remember
     /// an index for each column.
-    indices: ConsecutiveIndexPairs<OwnedRegion<R::Index>, O>,
+    indices: O,
     /// Storage for columns.
     inner: Vec<R>,
 }
 
-impl<R, O> Clone for ColumnsRegion<R, O>
-where
-    R: Region + Clone,
-    O: Clone,
-{
+impl<R: Clone, O: Clone> Clone for ColumnsRegion<R, O> {
     fn clone(&self) -> Self {
         Self {
             indices: self.indices.clone(),
@@ -89,15 +68,7 @@ where
     }
 }
 
-impl<R, O> Region for ColumnsRegion<R, O>
-where
-    R: Region,
-    O: IndexContainer<usize>,
-{
-    type Owned = Vec<R::Owned>;
-    type ReadItem<'a> = ReadColumns<'a, R> where Self: 'a;
-    type Index = <ConsecutiveIndexPairs<OwnedRegion<R::Index>, IndexOptimized> as Region>::Index;
-
+impl<R: Region + Default, O: Region> Region for ColumnsRegion<R, O> {
     fn merge_regions<'a>(regions: impl Iterator<Item = &'a Self> + Clone) -> Self
     where
         Self: 'a,
@@ -112,16 +83,9 @@ where
         }
 
         Self {
-            indices: ConsecutiveIndexPairs::merge_regions(regions.map(|r| &r.indices)),
+            indices: O::merge_regions(regions.map(|r| &r.indices)),
             inner,
         }
-    }
-
-    fn index(&self, index: Self::Index) -> Self::ReadItem<'_> {
-        ReadColumns(Ok(ReadColumnsInner {
-            columns: &self.inner,
-            index: self.indices.index(index),
-        }))
     }
 
     fn reserve_regions<'a, I>(&mut self, regions: I)
@@ -137,25 +101,62 @@ where
         for (index, inner) in self.inner.iter_mut().enumerate() {
             inner.reserve_regions(regions.clone().filter_map(|r| r.inner.get(index)));
         }
-    }
 
+        self.indices.reserve_regions(regions.map(|r| &r.indices));
+    }
+}
+
+impl<R: Default, O: Default> Default for ColumnsRegion<R, O> {
+    fn default() -> Self {
+        Self {
+            indices: O::default(),
+            inner: Vec::default(),
+        }
+    }
+}
+
+impl<R: HeapSize, O: HeapSize> HeapSize for ColumnsRegion<R, O> {
+    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
+        self.inner.heap_size(&mut callback);
+        for inner in &self.inner {
+            inner.heap_size(&mut callback);
+        }
+        self.indices.heap_size(callback);
+    }
+}
+
+impl<R: Clear, O: Clear> Clear for ColumnsRegion<R, O> {
     fn clear(&mut self) {
         for inner in &mut self.inner {
             inner.clear();
         }
         self.indices.clear();
     }
+}
 
-    fn heap_size<F: FnMut(usize, usize)>(&self, mut callback: F) {
-        let size_of_r = std::mem::size_of::<R>();
-        callback(
-            self.inner.len() * size_of_r,
-            self.inner.capacity() * size_of_r,
-        );
-        for inner in &self.inner {
-            inner.heap_size(&mut callback);
-        }
-        self.indices.heap_size(callback);
+impl<R, O: Len> Len for ColumnsRegion<R, O> {
+    fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+}
+
+impl<R, O> Index for ColumnsRegion<R, O>
+where
+    R: Index,
+    for<'a> O: Index<ReadItem<'a> = &'a [usize]> + 'a,
+{
+    type Owned = Vec<R::Owned>;
+    type ReadItem<'a> = ReadColumns<'a, R, R::Owned> where Self: 'a;
+
+    fn index(&self, index: usize) -> Self::ReadItem<'_> {
+        ReadColumns(Ok(ReadColumnsInner {
+            columns: &self.inner,
+            index: self.indices.index(index),
+        }))
     }
 
     fn reborrow<'b, 'a: 'b>(item: Self::ReadItem<'a>) -> Self::ReadItem<'b>
@@ -166,58 +167,34 @@ where
     }
 }
 
-impl<R, O> Default for ColumnsRegion<R, O>
-where
-    R: Region,
-    O: IndexContainer<usize>,
-{
-    fn default() -> Self {
-        Self {
-            indices: ConsecutiveIndexPairs::default(),
-            inner: Vec::default(),
-        }
-    }
-}
-
 /// Read the values of a row.
-pub struct ReadColumns<'a, R>(Result<ReadColumnsInner<'a, R>, &'a [R::Owned]>)
-where
-    R: Region;
+pub struct ReadColumns<'a, R, O>(Result<ReadColumnsInner<'a, R>, &'a [O]>);
 
-struct ReadColumnsInner<'a, R>
-where
-    R: Region,
-{
+struct ReadColumnsInner<'a, R> {
     /// Storage for columns.
     columns: &'a [R],
     /// Indices to retrieve values from columns.
-    index: &'a [R::Index],
+    index: &'a [usize],
 }
 
-impl<'a, R> Clone for ReadColumns<'a, R>
-where
-    R: Region,
-{
+impl<'a, R, O> Clone for ReadColumns<'a, R, O> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, R> Clone for ReadColumnsInner<'a, R>
-where
-    R: Region,
-{
+impl<'a, R> Clone for ReadColumnsInner<'a, R> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<'a, R> Copy for ReadColumns<'a, R> where R: Region {}
-impl<'a, R> Copy for ReadColumnsInner<'a, R> where R: Region {}
+impl<'a, R, O> Copy for ReadColumns<'a, R, O> {}
+impl<'a, R> Copy for ReadColumnsInner<'a, R> {}
 
-impl<'a, R> Debug for ReadColumns<'a, R>
+impl<'a, R, O> Debug for ReadColumns<'a, R, O>
 where
-    R: Region,
+    R: Index<Owned = O>,
     R::ReadItem<'a>: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -225,13 +202,13 @@ where
     }
 }
 
-impl<'a, R> ReadColumns<'a, R>
+impl<'a, R, O> ReadColumns<'a, R, O>
 where
-    R: Region,
+    R: Index<Owned = O>,
 {
     /// Iterate the individual values of a row.
     #[must_use]
-    pub fn iter(&'a self) -> ReadColumnsIter<'a, R> {
+    pub fn iter(&'a self) -> ReadColumnsIter<'a, R, O> {
         self.into_iter()
     }
 
@@ -243,10 +220,10 @@ where
             Err(slice) => IntoOwned::borrow_as(&slice[offset]),
         }
     }
-
+}
+impl<'a, R, O> Len for ReadColumns<'a, R, O> {
     /// Returns the length of this row.
-    #[must_use]
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         match &self.0 {
             Ok(inner) => inner.len(),
             Err(slice) => slice.len(),
@@ -254,8 +231,7 @@ where
     }
 
     /// Returns `true` if this row is empty.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         match &self.0 {
             Ok(inner) => inner.is_empty(),
             Err(slice) => slice.is_empty(),
@@ -264,32 +240,29 @@ where
 }
 impl<'a, R> ReadColumnsInner<'a, R>
 where
-    R: Region,
+    R: Index,
 {
     /// Get the element at `offset`.
     #[must_use]
     pub fn get(&self, offset: usize) -> R::ReadItem<'a> {
         self.columns[offset].index(self.index[offset])
     }
-
-    /// Returns the length of this row.
-    #[must_use]
-    pub fn len(&self) -> usize {
+}
+impl<'a, R> Len for ReadColumnsInner<'a, R> {
+    fn len(&self) -> usize {
         self.index.len()
     }
 
-    /// Returns `true` if this row is empty.
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.index.is_empty()
     }
 }
 
-impl<'a, R> IntoOwned<'a> for ReadColumns<'a, R>
+impl<'a, R, O> IntoOwned<'a> for ReadColumns<'a, R, O>
 where
-    R: Region,
+    R: Index<Owned = O>,
 {
-    type Owned = Vec<R::Owned>;
+    type Owned = Vec<O>;
 
     #[inline]
     fn into_owned(self) -> Self::Owned {
@@ -310,12 +283,12 @@ where
     }
 }
 
-impl<'a, R> IntoIterator for &ReadColumns<'a, R>
+impl<'a, R, O> IntoIterator for &ReadColumns<'a, R, O>
 where
-    R: Region,
+    R: Index<Owned = O>,
 {
     type Item = R::ReadItem<'a>;
-    type IntoIter = ReadColumnsIter<'a, R>;
+    type IntoIter = ReadColumnsIter<'a, R, O>;
 
     fn into_iter(self) -> Self::IntoIter {
         match self.0 {
@@ -328,16 +301,16 @@ where
 }
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIter<'a, R: Region>(Result<ReadColumnsIterInner<'a, R>, Iter<'a, R::Owned>>);
+pub struct ReadColumnsIter<'a, R, O>(Result<ReadColumnsIterInner<'a, R>, Iter<'a, O>>);
 
 /// An iterator over the elements of a row.
-pub struct ReadColumnsIterInner<'a, R: Region> {
-    iter: Zip<Iter<'a, R::Index>, Iter<'a, R>>,
+pub struct ReadColumnsIterInner<'a, R> {
+    iter: Zip<Iter<'a, usize>, Iter<'a, R>>,
 }
 
-impl<'a, R> Iterator for ReadColumnsIter<'a, R>
+impl<'a, R, O> Iterator for ReadColumnsIter<'a, R, O>
 where
-    R: Region,
+    R: Index<Owned = O>,
 {
     type Item = R::ReadItem<'a>;
 
@@ -356,16 +329,19 @@ where
     }
 }
 
-impl<'a, R> ExactSizeIterator for ReadColumnsIter<'a, R> where R: Region {}
+impl<'a, R, O> ExactSizeIterator for ReadColumnsIter<'a, R, O> where R: Index<Owned = O> {}
 
 impl<'a, R> Iterator for ReadColumnsIterInner<'a, R>
 where
-    R: Region,
+    R: Index,
 {
     type Item = R::ReadItem<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.iter.next().map(|(&i, r)| r.index(i))
+        self.iter.next().map(|(&i, r)| {
+            println!("i: {i}");
+            r.index(i)
+        })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -373,144 +349,147 @@ where
     }
 }
 
-impl<R, O> Push<ReadColumns<'_, R>> for ColumnsRegion<R, O>
+impl<R, O, Owned> Push<ReadColumns<'_, R, Owned>> for ColumnsRegion<R, O>
 where
-    for<'a> R: Region + Push<<R as Region>::ReadItem<'a>>,
-    O: IndexContainer<usize>,
+    R: Default + Index<Owned = Owned> + Len + for<'a> Push<<R as Index>::ReadItem<'a>>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: ReadColumns<'_, R>) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: ReadColumns<'_, R, Owned>) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        for (value, region) in item.iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(item.len()).map(|r| r.len() - 1));
     }
 }
 
 impl<'a, R, O, T> Push<&'a [T]> for ColumnsRegion<R, O>
 where
-    R: Region + Push<&'a T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<&'a T>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: &'a [T]) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: &'a [T]) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        for (value, region) in item.iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(item.len()).map(|r| r.len() - 1));
     }
 }
 
 impl<R, O, T, const N: usize> Push<[T; N]> for ColumnsRegion<R, O>
 where
-    R: Region + Push<T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<T>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: [T; N]) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .into_iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        let columns = item.len();
+        for (value, region) in item.into_iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(columns).map(|r| r.len() - 1));
     }
 }
 
 impl<'a, R, O, T, const N: usize> Push<&'a [T; N]> for ColumnsRegion<R, O>
 where
-    R: Region + Push<&'a T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<&'a T>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: &'a [T; N]) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: &'a [T; N]) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        for (value, region) in item.into_iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(item.len()).map(|r| r.len() - 1));
     }
 }
 
 impl<R, O, T> Push<Vec<T>> for ColumnsRegion<R, O>
 where
-    R: Region + Push<T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<T>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: Vec<T>) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .into_iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        let columns = item.len();
+        for (value, region) in item.into_iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(columns).map(|r| r.len() - 1));
     }
 }
 
 impl<'a, R, O, T> Push<&'a Vec<T>> for ColumnsRegion<R, O>
 where
-    R: Region + Push<&'a T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<&'a T>,
+    O: PushSlice<usize>,
 {
-    fn push(&mut self, item: &'a Vec<T>) -> <ColumnsRegion<R, O> as Region>::Index {
+    fn push(&mut self, item: &'a Vec<T>) {
         // Ensure all required regions exist.
         while self.inner.len() < item.len() {
             self.inner.push(R::default());
         }
 
-        let iter = item
-            .iter()
-            .zip(&mut self.inner)
-            .map(|(value, region)| region.push(value));
-        self.indices.push(PushIter(iter))
+        for (value, region) in item.into_iter().zip(&mut self.inner) {
+            region.push(value);
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(item.len()).map(|r| r.len() - 1));
     }
 }
 
 impl<R, O, T, I> Push<PushIter<I>> for ColumnsRegion<R, O>
 where
-    R: Region + Push<T>,
-    O: IndexContainer<usize>,
+    R: Default + Len + Push<T>,
     I: IntoIterator<Item = T>,
-    I::IntoIter: ExactSizeIterator,
+    O: PushSlice<usize>,
 {
     #[inline]
-    fn push(&mut self, item: PushIter<I>) -> <ColumnsRegion<R, O> as Region>::Index {
-        let iter = item.0.into_iter().enumerate().map(|(index, value)| {
+    fn push(&mut self, item: PushIter<I>) {
+        let mut columns = 0;
+        for (index, value) in item.0.into_iter().enumerate() {
             // Ensure all required regions exist.
             if self.inner.len() <= index {
                 self.inner.push(R::default());
             }
-            self.inner[index].push(value)
-        });
-        self.indices.push(PushIter(iter))
+            self.inner[index].push(value);
+            columns += 1;
+        }
+        self.indices
+            .push_iter(self.inner.iter().take(columns).map(|r| r.len() - 1));
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::impls::deduplicate::{CollapseSequence, ConsecutiveIndexPairs};
-    use crate::{MirrorRegion, OwnedRegion, Push, PushIter, Region, StringRegion};
+    use crate::{OwnedRegion, Push, PushIter, Region, StringRegion};
 
     use super::*;
 
@@ -518,17 +497,16 @@ mod tests {
     fn test_matrix() {
         let data = [[1, 2, 3], [4, 5, 6], [7, 8, 9]];
 
-        let mut r = ColumnsRegion::<MirrorRegion<_>>::default();
-
-        let mut indices = Vec::with_capacity(data.len());
+        let mut r = ColumnsRegion::<Vec<_>, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let index = r.push(row.as_slice());
-            indices.push(index);
+            // r.push(row.as_slice());
+            Push::push(&mut r, row);
+            // r.push(row.as_slice());
         }
 
-        for (index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().copied().eq(r.index(index).iter()));
+        for (read, row) in r.iter().zip(&data) {
+            assert!(row.iter().eq(read.iter()));
         }
     }
 
@@ -544,17 +522,14 @@ mod tests {
             [].as_slice(),
         ];
 
-        let mut r = ColumnsRegion::<MirrorRegion<_>>::default();
-
-        let mut indices = Vec::with_capacity(data.len());
+        let mut r = ColumnsRegion::<Vec<_>, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let index = r.push(*row);
-            indices.push(index);
+            r.push(*row);
         }
 
-        for (index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().copied().eq(r.index(index).iter()));
+        for (read, row) in r.iter().zip(&data) {
+            assert!(row.iter().eq(read.iter()));
         }
 
         println!("{r:?}");
@@ -572,18 +547,14 @@ mod tests {
             vec![],
         ];
 
-        let mut r =
-            ColumnsRegion::<CollapseSequence<ConsecutiveIndexPairs<StringRegion>>>::default();
-
-        let mut indices = Vec::with_capacity(data.len());
+        let mut r = ColumnsRegion::<StringRegion, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let index = r.push(row);
-            indices.push(index);
+            r.push(row);
         }
 
-        for (index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().eq(r.index(index).iter()));
+        for (read, row) in r.iter().zip(&data) {
+            assert!(row.iter().eq(read.iter()));
         }
 
         println!("{r:?}");
@@ -601,17 +572,14 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
-
-        let mut indices = Vec::with_capacity(data.len());
+        let mut r = ColumnsRegion::<StringRegion, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let index = r.push(row);
-            indices.push(index);
+            r.push(row);
         }
 
-        for (index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().eq(r.index(index).iter()));
+        for (read, row) in r.iter().zip(&data) {
+            assert!(row.iter().copied().eq(read.iter()));
         }
 
         println!("{r:?}");
@@ -629,23 +597,21 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
-
-        let mut indices = Vec::with_capacity(data.len());
+        let mut r = ColumnsRegion::<StringRegion, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let index = r.push(PushIter(row.iter()));
-            indices.push(index);
+            r.push(PushIter(row.iter()));
         }
 
-        for (index, row) in indices.iter().zip(&data) {
-            assert!(row.iter().eq(r.index(index).iter()));
+        for (read, row) in r.iter().zip(&data) {
+            println!("{read:?} {row:?}");
+            assert!(row.iter().copied().eq(read.iter()));
         }
 
-        assert_eq!("1", r.index(indices[1]).get(0));
-        assert_eq!(1, r.index(indices[1]).len());
-        assert!(!r.index(indices[1]).is_empty());
-        assert!(r.index(indices[0]).is_empty());
+        assert_eq!("1", r.index(1).get(0));
+        assert_eq!(1, r.index(1).len());
+        assert!(!r.index(1).is_empty());
+        assert!(r.index(0).is_empty());
 
         println!("{r:?}");
     }
@@ -654,13 +620,18 @@ mod tests {
     fn read_columns_push() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
-        let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>, OwnedRegion<usize>>>::default();
+        let mut r2 = <ColumnsRegion<OwnedRegion<u8>, OwnedRegion<usize>>>::default();
 
         for row in &data {
-            let idx = r.push(row);
-            let idx2 = r2.push(r.index(idx));
-            assert!(r.index(idx).iter().eq(r2.index(idx2).iter()));
+            r.push(row);
+            println!("{r:?}");
+            r2.push(r.index(r.len() - 1));
+            println!("{r2:?}");
+            assert!(r
+                .index(r.len() - 1)
+                .iter()
+                .eq(r2.index(r2.len() - 1).iter()));
         }
     }
 
@@ -669,31 +640,30 @@ mod tests {
     fn test_clear() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>, OwnedRegion<usize>>>::default();
 
-        let mut idx = None;
         for row in &data {
-            idx = Some(r.push(row));
+            r.push(row);
         }
 
         r.clear();
-        let _ = r.index(idx.unwrap());
+        let _ = r.index(0);
     }
 
     #[test]
     fn copy_reserve_regions() {
         let data = [[[1]; 4]; 4];
 
-        let mut r = <ColumnsRegion<OwnedRegion<u8>>>::default();
+        let mut r = <ColumnsRegion<OwnedRegion<u8>, OwnedRegion<usize>>>::default();
 
         for row in &data {
-            let _ = r.push(row);
+            r.push(row);
         }
         for row in data {
-            let _ = r.push(row);
+            r.push(row);
         }
 
-        let mut r2 = <ColumnsRegion<OwnedRegion<u8>>>::default();
+        let mut r2 = <ColumnsRegion<OwnedRegion<u8>, OwnedRegion<usize>>>::default();
         r2.reserve_regions(std::iter::once(&r));
 
         let mut cap = 0;
@@ -713,10 +683,10 @@ mod tests {
             vec![],
         ];
 
-        let mut r = ColumnsRegion::<ConsecutiveIndexPairs<StringRegion>>::default();
+        let mut r = ColumnsRegion::<StringRegion, OwnedRegion<usize>>::default();
 
         for row in &data {
-            let _ = r.push(PushIter(row.iter()));
+            r.push(PushIter(row.iter()));
         }
 
         let (mut siz1, mut cap1) = (0, 0);
@@ -727,7 +697,7 @@ mod tests {
 
         let mut r2 = ColumnsRegion::merge_regions(std::iter::once(&r));
         for row in &data {
-            let _ = r2.push(PushIter(row.iter()));
+            r2.push(PushIter(row.iter()));
         }
 
         let (mut siz2, mut cap2) = (0, 0);
