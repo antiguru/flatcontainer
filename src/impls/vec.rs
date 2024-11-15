@@ -61,6 +61,10 @@ impl<T: Clone> PushSlice<T> for Vec<T> {
     fn push_slice(&mut self, slice: &[T]) {
         self.extend_from_slice(slice);
     }
+
+    fn push_iter(&mut self, iter: impl IntoIterator<Item = T>) {
+        self.extend(iter);
+    }
 }
 
 impl<'a, T: Clone> Push<&'a T> for Vec<T> {

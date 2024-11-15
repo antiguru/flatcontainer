@@ -10,8 +10,7 @@ mod rank_select;
 // pub mod storage;
 
 // use crate::impls::index::IndexContainer;
-// pub use impls::columns::ColumnsRegion;
-// pub use impls::mirror::MirrorRegion;
+pub use impls::columns::ColumnsRegion;
 pub use impls::option::OptionRegion;
 pub use impls::result::ResultRegion;
 pub use impls::slice::SliceRegion;
@@ -76,6 +75,15 @@ pub trait Push<T> {
 pub trait PushSlice<T> {
     /// TODO
     fn push_slice(&mut self, slice: &[T]);
+
+    /// TOOD
+    fn push_owned(&mut self, owned: &mut Vec<T>) {
+        self.push_slice(owned);
+        owned.clear();
+    }
+
+    /// TODO
+    fn push_iter(&mut self, iter: impl IntoIterator<Item = T>);
 }
 
 /// Reserve space in the receiving region.
@@ -407,8 +415,10 @@ pub trait IndexAs<T> {
 /// TODO
 pub trait Len {
     /// TODO
+    #[must_use]
     fn len(&self) -> usize;
     /// TODO
+    #[must_use]
     fn is_empty(&self) -> bool {
         self.len() == 0
     }

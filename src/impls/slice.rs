@@ -453,7 +453,7 @@ where
     where
         I: Iterator<Item = &'a [T]> + Clone,
     {
-        self.bounds.reserve(1);
+        self.bounds.reserve(items.clone().count());
         self.inner.reserve_items(items.flatten());
     }
 }
@@ -604,7 +604,7 @@ where
     where
         I: Iterator<Item = ReadSlice<'a, R, O>> + Clone,
     {
-        self.bounds.reserve(1);
+        self.bounds.reserve(items.clone().count());
         self.inner.reserve_items(items.flatten());
     }
 }

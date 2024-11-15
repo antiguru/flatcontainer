@@ -156,6 +156,7 @@ where
                 .try_into()
                 .expect("must fit")
         };
+        println!("start: {}", start);
         let end = self.bounds.index_as(index).try_into().expect("must fit");
         &self.slices[start..end]
     }
@@ -171,12 +172,12 @@ where
 
 impl<T, S, B, const N: usize> Push<[T; N]> for OwnedRegion<T, S, B>
 where
-    S: Push<T> + Len,
+    S: PushSlice<T> + Len,
     B: Push<Idx>,
 {
     #[inline]
     fn push(&mut self, items: [T; N]) {
-        self.slices.push_extend(items);
+        self.slices.push_iter(items);
         self.bounds
             .push(self.slices.len().try_into().expect("must fit"));
     }
@@ -259,14 +260,25 @@ where
 
 impl<T, S, B> Push<Vec<T>> for OwnedRegion<T, S, B>
 where
-    S: Push<T> + Len,
+    S: PushSlice<T> + Len,
     B: Push<Idx>,
 {
     #[inline]
-    fn push(&mut self, items: Vec<T>) {
-        for item in items {
-            self.slices.push(item);
-        }
+    fn push(&mut self, mut items: Vec<T>) {
+        self.slices.push_owned(&mut items);
+        self.bounds
+            .push(self.slices.len().try_into().expect("must fit"));
+    }
+}
+
+impl<T, S, B> Push<&mut Vec<T>> for OwnedRegion<T, S, B>
+where
+    S: PushSlice<T> + Len,
+    B: Push<Idx>,
+{
+    #[inline]
+    fn push(&mut self, items: &mut Vec<T>) {
+        self.slices.push_owned(items);
         self.bounds
             .push(self.slices.len().try_into().expect("must fit"));
     }
@@ -298,14 +310,12 @@ where
 impl<T, S, B, I> Push<PushIter<I>> for OwnedRegion<T, S, B>
 where
     I: IntoIterator,
-    S: Push<I::Item> + Len,
+    S: PushSlice<I::Item> + Len,
     B: Push<Idx>,
 {
     #[inline]
     fn push(&mut self, items: PushIter<I>) {
-        for item in items {
-            self.slices.push(item);
-        }
+        self.slices.push_iter(items);
         self.bounds
             .push(self.slices.len().try_into().expect("must fit"));
     }
@@ -323,6 +333,34 @@ where
     {
         self.slices
             .reserve(items.flat_map(|i| i.into_iter()).count());
+    }
+}
+
+impl<T, S, B> PushSlice<T> for OwnedRegion<T, S, B>
+where
+    T: Clone,
+    S: PushSlice<T> + Len,
+    B: Push<Idx>,
+{
+    #[inline]
+    fn push_slice(&mut self, slice: &[T]) {
+        self.slices.push_slice(slice);
+        self.bounds
+            .push(self.slices.len().try_into().expect("must fit"));
+    }
+
+    #[inline]
+    fn push_owned(&mut self, owned: &mut Vec<T>) {
+        self.slices.push_owned(owned);
+        self.bounds
+            .push(self.slices.len().try_into().expect("must fit"));
+    }
+
+    #[inline]
+    fn push_iter(&mut self, iter: impl IntoIterator<Item = T>) {
+        self.slices.push_iter(iter);
+        self.bounds
+            .push(self.slices.len().try_into().expect("must fit"));
     }
 }
 

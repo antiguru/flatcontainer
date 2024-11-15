@@ -116,9 +116,12 @@ impl<T, E, RC, RV> Clear for ResultRegion<T, E, RC, RV>
 where
     T: Clear,
     E: Clear,
+    RC: Clear,
+    RV: Clear,
 {
     #[inline]
     fn clear(&mut self) {
+        self.ranks.clear();
         self.oks.clear();
         self.errs.clear();
     }
