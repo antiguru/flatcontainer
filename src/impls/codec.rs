@@ -1,6 +1,6 @@
 //! A region that encodes its contents.
 
-use crate::{OwnedRegion, Push, Region};
+use crate::{IntoOwned, OwnedRegion, Push, Region};
 
 pub use self::misra_gries::MisraGries;
 pub use dictionary::DictionaryCodec;
@@ -138,8 +138,29 @@ impl<C: Codec, R> Push<&[u8]> for CodecRegion<C, R>
 where
     for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
 {
+    #[inline]
     fn push(&mut self, item: &[u8]) -> <CodecRegion<C, R> as Region>::Index {
         self.codec.encode(item, &mut self.inner)
+    }
+}
+
+impl<C: Codec, R> Push<Vec<u8>> for CodecRegion<C, R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+{
+    #[inline]
+    fn push(&mut self, item: Vec<u8>) -> <CodecRegion<C, R> as Region>::Index {
+        self.push(item.as_slice())
+    }
+}
+
+impl<C: Codec, R> Push<&Vec<u8>> for CodecRegion<C, R>
+where
+    for<'a> R: Region<ReadItem<'a> = &'a [u8]> + Push<&'a [u8]> + 'a,
+{
+    #[inline]
+    fn push(&mut self, item: &Vec<u8>) -> <CodecRegion<C, R> as Region>::Index {
+        self.push(item.as_slice())
     }
 }
 
@@ -148,9 +169,10 @@ pub trait Codec: Default {
     /// Decodes an input byte slice into a sequence of byte slices.
     fn decode<'a>(&'a self, bytes: &'a [u8]) -> &'a [u8];
     /// Encodes a sequence of byte slices into an output byte slice.
-    fn encode<R>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+    fn encode<'a, R, B>(&mut self, bytes: B, output: &mut R) -> R::Index
     where
-        for<'a> R: Region + Push<&'a [u8]>;
+        R: Region + for<'b> Push<&'b [u8]>,
+        B: AsRef<[u8]> + IntoOwned<'a, Owned = Vec<u8>>;
     /// Constructs a new instance of `Self` from accumulated statistics.
     /// These statistics should cover the data the output expects to see.
     fn new_from<'a, I: Iterator<Item = &'a Self> + Clone>(stats: I) -> Self
@@ -165,7 +187,7 @@ pub trait Codec: Default {
 
 mod dictionary {
 
-    use crate::{Push, Region};
+    use crate::{IntoOwned, Push, Region};
     use std::collections::BTreeMap;
 
     pub use super::{BytesMap, Codec, MisraGries};
@@ -193,22 +215,24 @@ mod dictionary {
         /// Encode a sequence of byte slices.
         ///
         /// Encoding also records statistics about the structure of the input.
-        fn encode<R>(&mut self, bytes: &[u8], output: &mut R) -> R::Index
+        fn encode<'a, R, B>(&mut self, bytes: B, output: &mut R) -> R::Index
         where
-            for<'a> R: Region + Push<&'a [u8]>,
+            R: Region + for<'b> Push<&'b [u8]>,
+            B: AsRef<[u8]> + IntoOwned<'a, Owned = Vec<u8>>,
         {
-            self.total += bytes.len();
+            let slice = bytes.as_ref();
+            self.total += slice.len();
             // If we have an index referencing `bytes`, use the index key.
-            let index = if let Some(b) = self.encode.get(bytes) {
+            let index = if let Some(b) = self.encode.get(slice) {
                 self.bytes += 1;
                 output.push([*b].as_slice())
             } else {
-                self.bytes += bytes.len();
-                output.push(bytes)
+                self.bytes += slice.len();
+                output.push(slice)
             };
             // Stats stuff.
-            self.stats.0.insert(bytes.to_owned());
-            let tag = bytes[0];
+            let tag = slice[0];
+            self.stats.0.insert(bytes.into_owned());
             let tag_idx: usize = (tag % 4).into();
             self.stats.1[tag_idx] |= 1 << (tag >> 2);
 
