@@ -197,6 +197,7 @@ impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
     ///
     /// Prefer [`Self::merge_capacity`] over this function to also pre-size the regions.
     #[must_use]
+    #[inline]
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             indices: S::with_capacity(capacity),
@@ -206,6 +207,7 @@ impl<R: Region, S: IndexContainer<<R as Region>::Index>> FlatStack<R, S> {
 
     /// Returns a flat stack that can absorb the contents of `iter` without reallocation.
     #[must_use]
+    #[inline]
     pub fn merge_capacity<'a, I: Iterator<Item = &'a Self> + Clone + 'a>(stacks: I) -> Self
     where
         Self: 'a,
@@ -331,6 +333,7 @@ impl<'a, R: Region, S: IndexContainer<<R as Region>::Index>> IntoIterator for &'
     type Item = R::ReadItem<'a>;
     type IntoIter = Iter<'a, R, S::Iter<'a>>;
 
+    #[inline]
     fn into_iter(self) -> Self::IntoIter {
         Iter {
             inner: self.indices.iter(),
@@ -358,10 +361,12 @@ where
 {
     type Item = R::ReadItem<'a>;
 
+    #[inline]
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().map(|idx| self.region.index(idx))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         self.inner.size_hint()
     }
