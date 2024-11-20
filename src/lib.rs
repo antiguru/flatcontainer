@@ -414,6 +414,37 @@ impl<R: Clone, S: Clone> Clone for FlatStack<R, S> {
     }
 }
 
+impl<R1, S1, R2, S2> PartialEq<FlatStack<R2, S2>> for FlatStack<R1, S1>
+where
+    R1: Region,
+    S1: IndexContainer<<R1 as Region>::Index>,
+    R2: Region,
+    S2: IndexContainer<<R2 as Region>::Index>,
+    for<'a> R1::ReadItem<'a>: PartialEq<R2::ReadItem<'a>>,
+{
+    fn eq(&self, other: &FlatStack<R2, S2>) -> bool {
+        // For two flat stacks to be equal, their length must match and their contents must be equal.
+        if self.len() != other.len() {
+            false
+        } else {
+            for (a, b) in self.iter().zip(other.iter()) {
+                if a != b {
+                    return false;
+                }
+            }
+            true
+        }
+    }
+}
+
+impl<R, S> Eq for FlatStack<R, S>
+where
+    R: Region,
+    S: IndexContainer<<R as Region>::Index>,
+    for<'a> R::ReadItem<'a>: Eq,
+{
+}
+
 /// A type to wrap and push iterators into regions.
 ///
 /// This only exists to avoid blanket implementations that might conflict with more specific
