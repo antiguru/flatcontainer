@@ -18,11 +18,8 @@ pub trait IndexContainer<T>: Storage<T> {
     /// Accepts a newly pushed element.
     fn push(&mut self, item: T);
 
-    /// Extend from iterator. Must be [`ExactSizeIterator`] to efficiently
-    /// pre-allocate.
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator;
+    /// Extend from iterator.
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I);
 
     /// Returns an iterator over the elements.
     fn iter(&self) -> Self::Iter<'_>;
@@ -320,8 +317,6 @@ where
 
     #[inline]
     fn extend<I: IntoIterator<Item = usize>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
     {
         for item in iter {
             self.push(item);
@@ -436,8 +431,6 @@ where
     }
 
     fn extend<I: IntoIterator<Item = usize>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
     {
         for item in iter {
             self.push(item);
@@ -483,10 +476,7 @@ impl<T: Copy> IndexContainer<T> for Vec<T> {
         self.push(item);
     }
 
-    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I)
-    where
-        I::IntoIter: ExactSizeIterator,
-    {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
         Extend::extend(self, iter);
     }
 

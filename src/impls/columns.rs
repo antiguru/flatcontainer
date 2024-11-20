@@ -492,7 +492,6 @@ where
     R: Region + Push<T>,
     O: IndexContainer<usize>,
     I: IntoIterator<Item = T>,
-    I::IntoIter: ExactSizeIterator,
 {
     #[inline]
     fn push(&mut self, item: PushIter<I>) -> <ColumnsRegion<R, O> as Region>::Index {

@@ -252,7 +252,6 @@ where
 impl<T, S, I> Push<PushIter<I>> for OwnedRegion<T, S>
 where
     I: IntoIterator<Item = T>,
-    <I as IntoIterator>::IntoIter: ExactSizeIterator,
     T: Clone,
     S: Storage<T>
         + PushStorage<PushIter<I>>
